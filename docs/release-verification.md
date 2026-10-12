@@ -45,3 +45,10 @@ IARC terms were approved and the content rating is completed. The listing now in
 - The updated build recorded a 40.45-second stock-camera video with 48 kHz stereo AAC. After playback, the user confirmed that it works well. The PCM discard counter remained unchanged during the speech recording. This is a short check, not a long-duration reliability or synchronization result.
 - The final signed build and bundle, all 35 unit tests and release lint completed successfully. APK v2 signing and 16 KB ZIP alignment passed. A subsequent Start → Camera → app → Stop demonstration was captured; Stop removed the routing helper. Startup queue drops and underruns were observed, so zero-drop/zero-underrun operation is not claimed.
 - Review demonstration: https://shylenko.com/stereo-bridge/assets/review-demo.mp4. It contains app/Camera UI without microphone audio or personal camera imagery. Longer recordings and clock drift remain unvalidated.
+
+## Submission — 2026-10-12
+
+- Public signed rc3 APK, AAB and checksums are published at https://github.com/w1ne/stereo-bridge/releases/tag/v0.1.0-rc3. Hosted CI passed for both the main commit and release tag; the website/demo deployment passed.
+- Google processed version code 3 with native symbols, API 31+, target 36 and arm64-v8a. Release validation has no blocking errors. Its missing-deobfuscation-file warning is expected because release minification is disabled.
+- The foreground microphone service declaration and public demonstration URL are saved.
+- Sent all 11 changes for review under Artomatica. Publishing overview displays **Changes in review**, with Google's automatic quick checks still running before review delivery. Managed publishing is off, so approved changes are configured for publication automatically. No Google approval or store availability is claimed.
