@@ -17,9 +17,9 @@ Gain, mute, channel selection, swapping and an audio-only preview are under **Ad
 
 ## Compatibility and release status
 
-**Release candidate: 0.1.0-rc2.** Tested configuration: Pixel 8 Pro, Android 17, stock Pixel Camera and two original DJI Mic Mini transmitters. Other phones, Android versions and camera apps remain unverified. Other DJI microphone generations and other manufacturers are unsupported.
+**Release candidate: 0.1.0-rc3.** Tested configuration: Pixel 8 Pro, Android 17, stock Pixel Camera and two original DJI Mic Mini transmitters. Other phones, Android versions and camera apps remain unverified. Other DJI microphone generations and other manufacturers are unsupported.
 
-Independent capture and decoding produced user-confirmed recognizable speech. A signed standalone build routed two distinct inputs into a stock-camera 51-second 4K stereo video. The latest candidate adds system-theme UI and session hardening; final camera speech playback and a full disconnect/Stop exercise on this exact candidate remain pending. See [verification notes](docs/release-verification.md). Store availability is pending; this is not a claim of Google Play approval.
+Independent capture and decoding produced user-confirmed recognizable speech. The rc3 candidate fixes audio lost during camera-buffer backpressure; its stock-camera stereo speech take was confirmed clear by the user. Start, Camera handoff, Stop and helper cleanup were exercised on the Pixel. Long recordings, clock drift and broader device compatibility remain unvalidated. See [verification notes](docs/release-verification.md). Store availability is pending; this is not a claim of Google Play approval.
 
 Camera routing needs user-authorized **Wireless debugging**. Enable Developer options and Wireless debugging while connected to Wi-Fi; pair the app locally using Android’s six-digit code. Keep Wireless debugging enabled for camera sessions. No receiver, root, Shizuku, DJI software or computer runtime is required. Normal Android application permissions alone cannot register the camera audio injector. Changing networks or rebooting may require reconnection through Camera setup.
 

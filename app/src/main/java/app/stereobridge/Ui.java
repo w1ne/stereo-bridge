@@ -122,7 +122,7 @@ final class Ui {
         .setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
     scroll.setFillViewport(true);
     scroll.setBackgroundColor(background);
-    scroll.setClipToPadding(false);
+    scroll.setClipToPadding(true);
     scroll.setOnApplyWindowInsetsListener(
         (v, insets) -> {
           android.graphics.Insets bars =

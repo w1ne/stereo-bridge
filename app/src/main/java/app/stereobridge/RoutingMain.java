@@ -8,6 +8,7 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Packaged helper, executed only by the owner's authorized local ADB shell. */
 public final class RoutingMain {
@@ -106,22 +107,29 @@ public final class RoutingMain {
       out.flush();
       // SPP delivers five-frame bursts; allow 200 ms of scheduling headroom.
       ArrayBlockingQueue<byte[]> frames = new ArrayBlockingQueue<>(40);
+      AtomicLong queueDrops = new AtomicLong();
       AudioTrack source = track;
       writer =
           new Thread(
               () -> {
+                long received = 0, unwrittenBytes = 0, lastReport = 0;
                 try {
                   while (running.get()) {
                     byte[] frame = frames.take();
-                    int offset = 0;
-                    while (running.get() && offset < frame.length) {
-                      int n =
-                          source.write(
-                              frame, offset, frame.length - offset, AudioTrack.WRITE_NON_BLOCKING);
-                      if (n < 0) throw new IOException("Audio injection failed: " + n);
-                      // No recorder may be consuming the mix yet. Never retain unwritable PCM.
-                      if (n == 0) break;
-                      offset += n;
+                    received++;
+                    unwrittenBytes += PcmFrameWriter.write(frame,
+                        (data, offset, length) -> source.write(data, offset, length,
+                            AudioTrack.WRITE_NON_BLOCKING),
+                        running::get, SystemClock::elapsedRealtime, () -> Thread.sleep(2));
+                    long now = SystemClock.elapsedRealtime();
+                    if (now - lastReport >= 5000) {
+                      android.util.Log.i("StereoRoute", "frames=" + received
+                          + " discardedBytes=" + unwrittenBytes
+                          + " queued=" + frames.size()
+                          + " queueDrops=" + queueDrops.get()
+                          + " bufferFrames=" + source.getBufferSizeInFrames()
+                          + " underruns=" + source.getUnderrunCount());
+                      lastReport = now;
                     }
                   }
                 } catch (InterruptedException expected) {
@@ -144,6 +152,7 @@ public final class RoutingMain {
         // Keep reading even while AudioTrack has no consumer, including the session's EOF.
         if (!frames.offer(frame)) {
           frames.poll();
+          queueDrops.incrementAndGet();
           frames.offer(frame);
         }
       }

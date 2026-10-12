@@ -34,4 +34,14 @@ Public repository and signed prerelease are published at github.com/w1ne/stereo-
 
 Stereo Bridge has been created in Artomatica's Google Play Console after the publisher approved the policy and export declarations. Privacy, reviewer access instructions, advertising, advertising ID, target audience, data safety, government, financial and health declarations are saved. The listing copy, icon and feature graphic are saved as a draft. Google processed the signed rc2 bundle as version 2, minimum API 31, target API 36, arm64-v8a; the production release draft and notes are saved. Availability is configured for 178 countries/regions.
 
-Content rating awaits approval of the separate IARC terms. The listing requires at least two fresh phone screenshots. Google also requires a demonstration video for the microphone foreground-service declaration. That video and final candidate device checks await the phone being free for interaction. Store review submission has not occurred.
+IARC terms were approved and the content rating is completed. The listing now includes two fresh phone screenshots and is saved as ready to send for review. Google also requires a demonstration video for the microphone foreground-service declaration. Store review submission has not occurred.
+
+## Candidate 0.1.0-rc3
+
+- Corrected scrolling content clipping beneath the status bar; inspected the fix on the Pixel.
+- Both original transmitters connected after being restarted. Stock Camera saved a 43.09-second video with 48 kHz stereo AAC and distinct channel signals. The user reported audible interruptions during playback; this take is not release acceptance.
+- Routing diagnostics showed the nonblocking AudioTrack writer discarding roughly 13% of PCM bytes on transient backpressure, with repeated underruns.
+- Added a bounded, cancellable write retry that retains partially written frames. All 35 unit tests pass, including four regressions for partial writes, backpressure, absent consumers and cancellation/error handling.
+- The updated build recorded a 40.45-second stock-camera video with 48 kHz stereo AAC. After playback, the user confirmed that it works well. The PCM discard counter remained unchanged during the speech recording. This is a short check, not a long-duration reliability or synchronization result.
+- The final signed build and bundle, all 35 unit tests and release lint completed successfully. APK v2 signing and 16 KB ZIP alignment passed. A subsequent Start → Camera → app → Stop demonstration was captured; Stop removed the routing helper. Startup queue drops and underruns were observed, so zero-drop/zero-underrun operation is not claimed.
+- Review demonstration: https://shylenko.com/stereo-bridge/assets/review-demo.mp4. It contains app/Camera UI without microphone audio or personal camera imagery. Longer recordings and clock drift remain unvalidated.
