@@ -27,3 +27,7 @@ Start → guided first-time permissions/pairing → Camera opens → Camera reco
 - Pending on this exact candidate: normal Stop/restart and cancellation exercise, physical speech playback in stock Camera, disconnect notification while Camera is foreground, and a longer drift/drop check.
 
 Automated tests cover buffer overflow/live accounting, parser fragmentation/resynchronization, display-state labels, WAV format, real loopback ADB open/EOF behavior and route-write stall boundaries. They do not replace device audio verification.
+
+## Public distribution
+
+Public repository and signed prerelease are published at github.com/w1ne/stereo-bridge. Fresh hosted Linux CI passed unit tests, debug assembly and release bundle build. GitHub Pages deployment succeeded; HTTPS website and privacy policy are live at shylenko.com/stereo-bridge/. The Google Play new-app form is prepared and package availability confirmed; creation is pending the publisher’s required policy/export-law declarations. Store submission has not occurred.

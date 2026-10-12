@@ -10,7 +10,7 @@ Website: https://shylenko.com/stereo-bridge/
 Privacy: https://shylenko.com/stereo-bridge/privacy.html
 
 ## Short description
-Two original DJI Mic Mini transmitters. Stereo audio in your camera. No receiver.
+Two DJI Mic Mini transmitters. Stereo audio in your camera. No receiver.
 
 ## Full description
 Stereo Bridge connects two original DJI Mic Mini transmitters directly to your Android phone and routes them into your camera as separate left and right audio channels. No DJI receiver is needed. Audio decoding and mixing run on your phone; video stays in your camera app.
