@@ -1,0 +1,1 @@
+Upstream https://github.com/MuntashirAkon/spake2-java tag 2.2.1, commit 7615ddd680b990e14513ebb66eac4cb0dbf82464. LGPL-3.0; unmodified source provided for the dynamically linked spake2 Android dependency. Nested spake2-c source and licenses retained.
