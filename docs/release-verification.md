@@ -30,4 +30,6 @@ Automated tests cover buffer overflow/live accounting, parser fragmentation/resy
 
 ## Public distribution
 
-Public repository and signed prerelease are published at github.com/w1ne/stereo-bridge. Fresh hosted Linux CI passed unit tests, debug assembly and release bundle build. GitHub Pages deployment succeeded; HTTPS website and privacy policy are live at shylenko.com/stereo-bridge/. The Google Play new-app form is prepared and package availability confirmed; creation is pending the publisher’s required policy/export-law declarations. Store submission has not occurred.
+Public repository and signed prerelease are published at github.com/w1ne/stereo-bridge. Fresh hosted Linux CI passed unit tests, debug assembly and release bundle build. GitHub Pages deployment succeeded; HTTPS website and privacy policy are live at shylenko.com/stereo-bridge/.
+
+Stereo Bridge has been created in Artomatica's Google Play Console after the publisher approved the policy and export declarations. Privacy, reviewer access instructions, advertising, advertising ID, target audience, data safety, government, financial and health declarations are saved. The listing copy, icon and feature graphic are saved as a draft. The signed rc2 app bundle has been uploaded for Play processing. Content rating awaits approval of the separate IARC terms; fresh phone screenshots and final candidate device checks remain pending. Store review submission has not occurred.
