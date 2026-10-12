@@ -13,7 +13,7 @@
 
 Gain, mute, channel selection, swapping and an audio-only preview are under **Advanced**. The interface follows your phone’s light or dark theme.
 
-[Downloads](https://github.com/w1ne/stereo-bridge/releases) · [Setup and privacy](https://w1ne.github.io/stereo-bridge/) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
+[Downloads](https://github.com/w1ne/stereo-bridge/releases) · [Setup and privacy](https://shylenko.com/stereo-bridge/) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
 
 ## Compatibility and release status
 

@@ -6,8 +6,8 @@ Language: English (United States)
 Category: Video Players & Editors
 Pricing: Free
 Support: andrii@shylenko.com
-Website: https://w1ne.github.io/stereo-bridge/
-Privacy: https://w1ne.github.io/stereo-bridge/privacy.html
+Website: https://shylenko.com/stereo-bridge/
+Privacy: https://shylenko.com/stereo-bridge/privacy.html
 
 ## Short description
 Two original DJI Mic Mini transmitters. Stereo audio in your camera. No receiver.
