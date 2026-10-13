@@ -1,4 +1,4 @@
-# Offline recorder candidate — 13 October 2026
+# Offline recorder candidate — updated 14 October 2026
 
 ## Architecture and daily use
 
@@ -40,9 +40,18 @@ Earlier hosted runs exposed AAC input batching and camera session/device shutdow
 
 Synthetic emulator testing cannot establish physical Bluetooth reconnect reliability, microphone intelligibility or long-term microphone clock drift.
 
-## Pixel validation still required
+## Physical Pixel checks — in progress
 
-The exact offline candidate has not been installed or tested on the Pixel. Test two-mic startup, speech/channel assignment, Stop/save/repeat, screen sleep, microphone disconnect, at least a 15-minute take and reconnection after reboot with Wi-Fi and wireless debugging disabled. Driver timestamps are host estimates; long-term clock drift and Bluetooth scheduling remain hardware-dependent.
+A USB-connected **Pixel 6 / Android 15** identified as `oriole` (the expected Pixel 8 Pro was not connected). The signed release APK installed successfully. Camera preview and normal first-use Camera, Microphone, Nearby devices and notification permission dialogs worked. With only one original DJI transmitter paired, Record correctly opened the two-microphone pairing guide.
+
+A separate debug package exercised the same camera/encoder implementation with synthetic tones. With Wi-Fi disabled and wireless debugging off, it saved:
+
+- 11.36-second 1920×1080 H.264 / 48 kHz stereo AAC take.
+- 91.74-second repeated take spanning Home, screen sleep and PIN lock. Stop was sent through the debug app's existing Stop action while locked; the saved file remained playable. Video continued, with a largest frame timestamp gap of 0.278 seconds across this take.
+
+Both files passed distinct left/right tones, monotonic track timestamps and no silent 100 ms audio windows. These are test tones, **not microphone captures**. The phone was then rebooted; post-reboot interaction is awaiting the owner's PIN unlock.
+
+Still required: post-reboot saved-settings/recording check, physical two-mic startup and speech/channel assignment, microphone disconnect, a longer real-microphone take, and reconnection with Wi-Fi/wireless debugging disabled. Driver timestamps are host estimates; long-term clock drift and Bluetooth scheduling remain hardware-dependent.
 
 For installation/testing: **plug the Pixel 8 Pro into the Mac with a USB-C data cable. Keep both DJI transmitters wireless. One user step: unlock the Pixel and accept “Allow USB debugging” if Android shows it.** This development connection is not a recording requirement.
 
