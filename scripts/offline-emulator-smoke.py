@@ -35,8 +35,12 @@ def adb(*parts, check=True):
 
 
 def nodes():
-    adb('shell', 'uiautomator', 'dump', '/sdcard/stereo-ui.xml')
-    data = adb('shell', 'cat', '/sdcard/stereo-ui.xml')
+    adb('shell', 'rm', '-f', '/sdcard/stereo-ui.xml')
+    output = adb('shell', 'uiautomator', 'dump', '/sdcard/stereo-ui.xml')
+    data = adb('shell', 'cat', '/sdcard/stereo-ui.xml', check=False)
+    if not data.lstrip().startswith('<?xml'):
+        (out / 'ui-dump-error.txt').write_text(output + data)
+        return []
     return list(ET.fromstring(data).iter('node'))
 
 

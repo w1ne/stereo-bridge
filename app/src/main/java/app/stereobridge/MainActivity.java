@@ -16,6 +16,7 @@ public final class MainActivity extends Activity {
   private Ui ui;
   private BridgeSettings settings;
   private TextureView preview;
+  private int transformedWidth=-1,transformedHeight=-1,bufferWidth=-1,bufferHeight=-1,bufferRotation=-1;
   private SurfaceTexture texture;
   private OfflineRecorderService.LocalBinder recorder, previewOwner;
   private boolean bound, resumed, pendingRecord, expanded;
@@ -92,6 +93,7 @@ public final class MainActivity extends Activity {
     status = ui.text("Ready to record", 18, true);
     root.addView(status);
     timer = ui.caption("");
+    timer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     root.addView(timer);
     ui.space(root, 12);
     LinearLayout mics = ui.card(root);
@@ -169,6 +171,8 @@ public final class MainActivity extends Activity {
   private void transform(int width, int height) {
     if (width <= 0 || height <= 0) return;
     int[] info = recorder == null ? new int[] {1920, 1080, 90} : recorder.previewInfo();
+    if(width==transformedWidth&&height==transformedHeight&&info[0]==bufferWidth&&info[1]==bufferHeight&&info[2]==bufferRotation)return;
+    transformedWidth=width;transformedHeight=height;bufferWidth=info[0];bufferHeight=info[1];bufferRotation=info[2];
     float sw = info[0], sh = info[1];
     double angle = Math.toRadians(info[2]);
     float rotatedWidth = info[2] % 180 == 0 ? sw : sh, rotatedHeight = info[2] % 180 == 0 ? sh : sw;
@@ -371,32 +375,33 @@ public final class MainActivity extends Activity {
     }
   }
 
+  private static void textIfChanged(TextView view,String text){if(!view.getText().toString().equals(text))view.setText(text);}
+
   private void refresh() {
     transform(preview.getWidth(), preview.getHeight());
     OfflineSessionState s = OfflineRecorderService.state;
-    status.setText(s.message());
-    status.setTextColor(s.phase() == OfflineSessionState.Phase.ERROR ? ui.danger : ui.text);
-    leftLabel.setText(
+    textIfChanged(status,s.message());
+    int statusColor=s.phase()==OfflineSessionState.Phase.ERROR?ui.danger:ui.text;
+    if(status.getCurrentTextColor()!=statusColor)status.setTextColor(statusColor);
+    textIfChanged(leftLabel,
         "L · "
             + (settings.address(true).isEmpty() ? "Auto-select on Record" : settings.name(true)));
-    rightLabel.setText(
+    textIfChanged(rightLabel,
         "R · "
             + (settings.address(false).isEmpty() ? "Auto-select on Record" : settings.name(false)));
-    leftMeter.level = OfflineRecorderService.leftLevel;
-    rightMeter.level = OfflineRecorderService.rightLevel;
-    leftMeter.invalidate();
-    rightMeter.invalidate();
+    if(leftMeter.level!=OfflineRecorderService.leftLevel){leftMeter.level=OfflineRecorderService.leftLevel;leftMeter.invalidate();}
+    if(rightMeter.level!=OfflineRecorderService.rightLevel){rightMeter.level=OfflineRecorderService.rightLevel;rightMeter.invalidate();}
     String action =
         s.phase() == OfflineSessionState.Phase.SAVING
             ? "Saving…"
             : s.phase() == OfflineSessionState.Phase.CONNECTING
                 ? "Cancel"
                 : s.phase() == OfflineSessionState.Phase.RECORDING ? "Stop" : "Record";
-    record.setText(action);
+    textIfChanged(record,action);
     record.setEnabled(s.phase() != OfflineSessionState.Phase.SAVING);
     long seconds =
         Math.max(0, (SystemClock.elapsedRealtime() - OfflineRecorderService.startedAt) / 1000);
-    timer.setText(
+    textIfChanged(timer,
         s.phase() == OfflineSessionState.Phase.RECORDING
             ? String.format(Locale.ROOT, "%02d:%02d · Stereo recording", seconds / 60, seconds % 60)
             : "");
