@@ -11,7 +11,7 @@ First use only: pair both original DJI Mic Mini transmitters in Android Settings
 ## Local checks
 
 - Debug APK, signed release APK and signed release AAB build with JDK 17 / SDK 36.
-- All 55 unit tests pass (zero failures/errors). Tests cover parser/buffer behavior, stereo mixing, sample timestamps, bounded mux buffering, video timestamp mapping and session state restoration.
+- All 61 unit tests pass (zero failures/errors). Tests cover parser/buffer behavior, stereo mixing, sample timestamps, AAC input batching, bounded mux buffering, video timestamp mapping and session state restoration.
 - Release lint has zero errors; warnings include English-only UI, pinned toolchain versions and arm64-only support.
 - Release manifest has no Internet permission, debugging setup, boot receiver or exported recording service.
 - LibADB, SPAKE2, Conscrypt and Bouncy Castle are absent from runtime dependencies.
@@ -28,7 +28,17 @@ python3 scripts/offline-emulator-smoke.py --serial emulator-5554 --output /priva
 
 It disables Wi-Fi, records debug-only 440 Hz left / 880 Hz right tones through the real camera/encoder path, repeats with background and screen sleep, reboots, records again and pulls the saved videos. Release builds disable synthetic input.
 
-The official API 31 arm64 emulator image installed, but the emulator could not boot: its userdata/disk requirements exceeded the Mac’s free space. No emulator recording or reboot test is claimed. The temporary emulator packages were removed to restore disk space; the harness is ready for a host with sufficient space. Synthetic testing cannot establish Bluetooth reconnect reliability or physical microphone intelligibility.
+The Mac could not boot the API 31 arm64 emulator because its disk requirements exceeded available space; those temporary packages were removed. Hosted API 31 x86_64 emulator validation **passed** on source commit `2fafcd6` in [GitHub Actions run 38435020995](https://github.com/w1ne/stereo-bridge/actions/runs/38435020995):
+
+- Three takes saved successfully, including repeat recording across background/screen sleep and another take after reboot with Wi-Fi disabled.
+- The last saved video URI restored after reboot without setup.
+- All three MP4s contain 1280×720 H.264 video and 48 kHz two-channel AAC audio.
+- Distinct 440 Hz left / 880 Hz right tones, monotonic track timestamps and no silent 100 ms audio windows passed for each take.
+- Evidence artifact contains screenshots, logcat, the videos and `media-verification.json`.
+
+Earlier hosted runs exposed AAC input batching and camera session/device shutdown bugs; both were fixed before this passing run. Harness fixes wait for shared storage after reboot and tolerate UI automation exit errors when a valid fresh snapshot exists. The signed candidate uses the same application source as the passing run (application last changed at `ad5c87f`; subsequent commits change only the harness).
+
+Synthetic emulator testing cannot establish physical Bluetooth reconnect reliability, microphone intelligibility or long-term microphone clock drift.
 
 ## Pixel validation still required
 

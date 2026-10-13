@@ -7,9 +7,9 @@
 **Tech Stack:** Android Java 17, Camera2, MediaCodec, MediaMuxer, MediaStore, independent SPP/LC3 driver, JUnit, Android emulator.
 
 - [x] Add tested stereo PCM/timestamp/session primitives; preserve driver and gain controls.
-- [x] Build OfflineVideoEncoder with bounded format/sample coordination, partial input handling and finite EOS drain; emulator execution remains blocked by host disk space.
+- [x] Build OfflineVideoEncoder with bounded format/sample coordination, partial input handling and finite EOS drain; hosted emulator execution passed.
 - [x] Add OfflineRecorderService with camera capability selection, preview ownership, fresh dual-mic gating, cancellable sessions and MediaStore saves.
 - [x] Replace launcher with preview, two meters and one Record/Stop control; remove debugging setup and dependencies from compiled app.
-- [ ] Install official emulator, add debug-only synthetic microphone harness and exercise MP4 encoding, repeat, lifecycle, reboot and permission flows.
+- [x] Add debug-only synthetic microphone harness and validate MP4 encoding, repeat, background/screen sleep and reboot with Wi-Fi off on a hosted emulator. First-use permission UI and physical Bluetooth remain Pixel checks.
 - [x] Review spec compliance and code quality, fix findings, build signed offline candidate and document evidence/limitations.
 - [x] Provide exact Pixel cable/user step and final one-step usage. Do not replace Play release before physical validation.
