@@ -36,7 +36,9 @@ def adb(*parts, check=True):
 
 def nodes():
     adb('shell', 'rm', '-f', '/data/local/tmp/stereo-ui.xml')
-    output = adb('shell', 'uiautomator', 'dump', '/data/local/tmp/stereo-ui.xml')
+    # UiAutomation can exit nonzero during screen transitions even after writing
+    # valid XML. Validate the fresh file, and retry missing dumps in wait_text.
+    output = adb('shell', 'uiautomator', 'dump', '/data/local/tmp/stereo-ui.xml', check=False)
     data = adb('shell', 'cat', '/data/local/tmp/stereo-ui.xml', check=False)
     if not data.lstrip().startswith('<?xml'):
         (out / 'ui-dump-error.txt').write_text(output + data)
