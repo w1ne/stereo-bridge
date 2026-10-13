@@ -116,7 +116,12 @@ def run():
     adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
     adb('shell', 'wm', 'dismiss-keyguard')
     launch()
-    wait_text('Open last video')
+    dimensions=list(map(int,re.findall(r'\d+',adb('shell','wm','size'))[-2:]))
+    width,height=dimensions
+    adb('shell','input','swipe',str(width//2),str(int(height*.65)),str(width//2),str(int(height*.3)),'350')
+    last_tree=wait_text('Open last video')
+    assert any(n.get('text')=='Open last video' and n.get('enabled')=='true' for n in last_tree), 'Last saved URI not restored'
+    assert adb('shell','settings','get','global','wifi_on').strip()=='0', 'Wi-Fi enabled after reboot'
     screenshot('after-reboot')
     take('after-reboot-take')
     adb('pull', '/sdcard/Movies/Stereo Bridge', str(out / 'videos'))
@@ -129,6 +134,7 @@ try:
 finally:
     try:
         (out / 'logcat.txt').write_text(adb('logcat', '-d'))
+        adb('pull', '/sdcard/Movies/Stereo Bridge', str(out / 'videos'), check=False)
         screenshot('final-state')
     except Exception as error:
         print('Could not capture final diagnostic state:', error, flush=True)

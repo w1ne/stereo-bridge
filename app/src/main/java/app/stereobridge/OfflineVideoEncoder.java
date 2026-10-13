@@ -19,19 +19,16 @@ public final class OfflineVideoEncoder {
   private MediaMuxer muxer;
   private Surface surface;
   private Thread worker;
-  private final ArrayDeque<Pcm> pcm = new ArrayDeque<>();
+  private final PcmBatchQueue pcm = new PcmBatchQueue(MAX_PCM, 512);
   private final ArrayDeque<Sample> pending = new ArrayDeque<>();
-  private int pcmBytes;
   private final EncoderMuxGate muxGate = new EncoderMuxGate(MAX_ENCODED, 4096);
   private volatile boolean stopping, aborted;
   private volatile Throwable failure;
   private final EncoderTimeline timeline = new EncoderTimeline();
   private long epochNanos, lastAudioEndUs;
-  private long lastQueuedAudioUs = -1;
   private int videoTrack = -1, audioTrack = -1;
   private boolean muxStarted, videoEos, audioEos, audioInputEos;
   private int videoSamples, audioSamples;
-  private Pcm current;
 
   public OfflineVideoEncoder(File output, int width, int height, int rotation) throws IOException {
     try {
@@ -84,16 +81,7 @@ public final class OfflineVideoEncoder {
   public synchronized void audio(byte[] stereoPcm, long ptsUs) {
     if (worker == null || stopping || aborted || failure != null)
       throw new IllegalStateException("Encoder unavailable", failure);
-    if (stereoPcm.length == 0
-        || stereoPcm.length % 4 != 0
-        || ptsUs < 0
-        || ptsUs < lastQueuedAudioUs)
-      throw new IllegalArgumentException("Expected stereo PCM16 with increasing timestamps");
-    if (pcm.size() >= 512 || stereoPcm.length > MAX_PCM - pcmBytes)
-      throw new IllegalStateException("Audio encoder queue full");
-    pcm.add(new Pcm(stereoPcm.clone(), ptsUs));
-    pcmBytes += stereoPcm.length;
-    lastQueuedAudioUs = EncoderTimeline.pcmPts(ptsUs, stereoPcm.length);
+    pcm.offer(stereoPcm, ptsUs);
   }
 
   public void finish() throws IOException {
@@ -146,8 +134,8 @@ public final class OfflineVideoEncoder {
           signalled = true;
           stopDeadline = SystemClock.elapsedRealtime() + 9000;
         }
-        feedAudio();
-        boolean progress = drain(video, true) | drain(audio, false);
+        boolean progress = feedAudio();
+        progress |= drain(video, true) | drain(audio, false);
         flushPending();
         if (stopping && SystemClock.elapsedRealtime() > stopDeadline)
           throw new IOException("Codec EOS timeout");
@@ -163,32 +151,22 @@ public final class OfflineVideoEncoder {
     }
   }
 
-  private void feedAudio() throws IOException {
-    if (audioInputEos) return;
-    synchronized (this) {
-      if (current == null) current = pcm.poll();
-    }
-    if (current == null && !stopping) return;
+  private boolean feedAudio() throws IOException {
+    if (audioInputEos || !pcm.ready(stopping)) return false;
     int index = audio.dequeueInputBuffer(0);
-    if (index < 0) return;
-    if (current == null) {
-      audio.queueInputBuffer(index, 0, 0, lastAudioEndUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-      audioInputEos = true;
-      return;
-    }
+    if (index < 0) return false;
     ByteBuffer buffer = audio.getInputBuffer(index);
     if (buffer == null || buffer.capacity() < 4) throw new IOException("Invalid AAC input buffer");
     buffer.clear();
-    int n = Math.min(buffer.remaining() / 4 * 4, current.bytes.length - current.offset);
-    long pts = EncoderTimeline.pcmPts(current.pts, current.offset);
-    buffer.put(current.bytes, current.offset, n);
-    audio.queueInputBuffer(index, 0, n, pts, 0);
-    current.offset += n;
-    lastAudioEndUs = EncoderTimeline.pcmPts(current.pts, current.offset);
-    synchronized (this) {
-      pcmBytes -= n;
+    PcmBatchQueue.Batch batch = pcm.take(buffer, stopping);
+    if (batch == null) {
+      audio.queueInputBuffer(index, 0, 0, lastAudioEndUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+      audioInputEos = true;
+    } else {
+      audio.queueInputBuffer(index, 0, batch.bytes, batch.ptsUs, 0);
+      lastAudioEndUs = batch.endUs;
     }
-    if (current.offset == current.bytes.length) current = null;
+    return true;
   }
 
   private boolean drain(MediaCodec codec, boolean isVideo) throws IOException {
@@ -281,19 +259,6 @@ public final class OfflineVideoEncoder {
     }
     pcm.clear();
     pending.clear();
-    current = null;
-    pcmBytes = 0;
-  }
-
-  private static final class Pcm {
-    final byte[] bytes;
-    final long pts;
-    int offset;
-
-    Pcm(byte[] b, long p) {
-      bytes = b;
-      pts = p;
-    }
   }
 
   private static final class Sample {
