@@ -1,15 +1,15 @@
-# Privacy
+# Privacy — offline recorder candidate
 
-Stereo Bridge processes audio from the two Bluetooth microphones you select, only after you press Start or Record audio preview. It stops when you press Stop, use the notification Stop action, or the microphone connection fails.
+This policy describes Stereo Bridge 0.2.0's offline recorder. The previously published 0.1.0 bridge uses the policy distributed with that release.
 
-Audio is decoded on your phone. When you choose an audio preview, the latest take is stored in the app's private storage for playback. Camera bridge sessions do not retain microphone audio in Stereo Bridge. A new completed audio preview replaces the previous take. Uninstalling the app deletes these private recordings. Camera video is saved by your camera app under that app's own storage and privacy settings.
+Stereo Bridge captures video and audio from the two Bluetooth microphones you select only after you tap Record. Capture stops when you tap Stop, use the notification Stop action, cancel startup, or a capture connection fails. It does not start recording after a reboot.
 
-Stereo Bridge has no analytics, advertising, cloud audio upload, or account requirement. Internet permission is used for an authenticated connection to the same phone's local wireless debugging service and a loopback audio connection. Discovered debugging services on other devices are not connected.
+Audio is decoded and mixed on your phone. Completed MP4 videos are saved to Movies / Stereo Bridge and remain there if you uninstall the app. Temporary takes are stored privately while saving. A failed save can leave a private take for recovery; clearing app storage or uninstalling deletes private files. Delete completed videos using your gallery or file manager.
 
-The app saves your chosen microphone addresses, camera package, gain/mute settings, and a local ADB identity. The identity is encrypted with a key stored in Android Keystore. Application backup is disabled. Pairing codes are not stored.
+The app has no Internet permission, analytics, advertising, cloud upload or account requirement. It does not use wireless debugging, a local ADB identity, root or Shizuku.
 
-Microphone and Bluetooth access are needed to capture audio. Notifications show an active recording and provide Stop. Camera bridging requires the owner's explicit Android wireless debugging pairing; no root access or Shizuku is used.
+The app saves your selected microphone addresses and names, gain/mute/channel settings and the URI of the last saved video. Application backup is disabled. Clear application storage or uninstall to delete these settings. Bluetooth pairings are managed separately by Android Settings.
 
-Publisher: Artomatica. Contact: [andrii@shylenko.com](mailto:andrii@shylenko.com). Effective date: 12 October 2026.
+Camera, Microphone and Nearby devices permissions enable capture. Notifications show recording progress and provide Stop. A wake lock keeps an active capture running when the screen sleeps. No location permission is requested.
 
-To delete saved settings, the local pairing identity and audio previews, clear Stereo Bridge storage in Android Settings or uninstall the app. Removing the app’s paired entry in Wireless debugging also revokes its camera-routing authorization.
+Publisher: Artomatica. Contact: [andrii@shylenko.com](mailto:andrii@shylenko.com). Effective date: 13 October 2026.

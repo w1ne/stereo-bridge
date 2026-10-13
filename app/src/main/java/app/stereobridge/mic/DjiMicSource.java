@@ -50,7 +50,7 @@ public final class DjiMicSource implements MicSource {
               t.setDaemon(true);
               return t;
             });
-    watchdog.scheduleAtFixedRate(
+    watchdog.scheduleWithFixedDelay(
         () -> {
           if (running && System.nanoTime() >= deadline) closeSocket();
         },

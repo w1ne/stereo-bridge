@@ -1,44 +1,37 @@
 # Stereo Bridge
 
-**Two mics. One camera.** Open-source Android audio routing for two original DJI Mic Mini transmitters without a receiver. Audio decoding and mixing run on the phone. Video stays in your camera app.
+**Two mics. One recording.** An open-source Android video recorder for two original DJI Mic Mini transmitters, without a receiver.
 
-![Stereo Bridge dashboard](docs/site/assets/dashboard-dark.png)
+## Daily use
 
-## Get started
+**Open Stereo Bridge and tap Record.** Tap **Stop** to save the stereo video to **Movies / Stereo Bridge**.
 
-1. Pair both transmitters in Android Bluetooth settings.
-2. Tap **Start**. Stereo Bridge selects exactly two paired microphones and guides you through permissions and first-time camera routing setup.
-3. Camera opens when both inputs are live. Use Camera’s record button to shoot video.
-4. Tap **Stop** in Stereo Bridge or its notification when finished.
+First use only: pair both transmitters in Android Bluetooth settings and allow Camera, Microphone and Nearby devices. The app automatically selects exactly two paired original Mic Mini transmitters. If more are paired, choose left and right in Advanced controls. Turn on Bluetooth and both microphones before recording.
 
-Gain, mute, channel selection, swapping and an audio-only preview are under **Advanced**. The interface follows your phone’s light or dark theme.
+Microphone assignments, gain, mute and channel swap are saved. Recording needs no Wi-Fi, Internet, computer, Developer options, wireless debugging, root or Shizuku. After a phone reboot, open the app and tap Record again. It never starts recording automatically.
 
-[Downloads](https://github.com/w1ne/stereo-bridge/releases) · [Setup and privacy](https://shylenko.com/stereo-bridge/) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
+## Offline candidate status
 
-## Compatibility and release status
+This branch builds **0.2.0-offline-rc1**, a new architecture: Camera2 captures video inside Stereo Bridge; independent Bluetooth microphone capture feeds two-channel AAC; Android MediaMuxer saves an H.264/AAC MP4. The two selected microphones occupy left and right channels. Videos are capped at the largest available 16:9 camera mode up to 1080p, with a 30 fps target. This candidate uses its own camera screen.
 
-**Release candidate: 0.1.0-rc3.** Tested configuration: Pixel 8 Pro, Android 17, stock Pixel Camera and two original DJI Mic Mini transmitters. Other phones, Android versions and camera apps remain unverified. Other DJI microphone generations and other manufacturers are unsupported.
+The previous **0.1.0-rc3** stock-camera bridge remains available in [published releases](https://github.com/w1ne/stereo-bridge/releases). That older version requires wireless debugging and is a separate architecture. The offline candidate has not yet been physically validated on the Pixel and has not replaced the Google Play submission. See [offline verification](docs/offline-verification.md).
 
-Independent capture and decoding produced user-confirmed recognizable speech. The rc3 candidate fixes audio lost during camera-buffer backpressure; its stock-camera stereo speech take was confirmed clear by the user. Start, Camera handoff, Stop and helper cleanup were exercised on the Pixel. Long recordings, clock drift and broader device compatibility remain unvalidated. See [verification notes](docs/release-verification.md). Store availability is pending; this is not a claim of Google Play approval.
-
-Camera routing needs user-authorized **Wireless debugging**. Enable Developer options and Wireless debugging while connected to Wi-Fi; pair the app locally using Android’s six-digit code. Keep Wireless debugging enabled for camera sessions. No receiver, root, Shizuku, DJI software or computer runtime is required. Normal Android application permissions alone cannot register the camera audio injector. Changing networks or rebooting may require reconnection through Camera setup.
-
-Allow notifications to see connection failures while Camera is foreground. If notifications or the alert channel are disabled, those alerts may be absent. The app does not automatically restart microphones after a failure. Precise inter-microphone clock synchronization and drift correction have not been validated.
+Only original DJI Mic Mini transmitters are supported. Other phones, DJI generations and manufacturers need separate validation. Audio startup is aligned using driver timestamps; long-term independent microphone clock drift still requires hardware testing.
 
 ## Build
 
-JDK 17, Android SDK 36, NDK 28.2.13676358 and CMake 3.22.1. Gradle 9.6.0 is pinned by the wrapper with a SHA-256 distribution checksum.
+Use JDK 17, Android SDK 36, NDK 28.2.13676358 and CMake 3.22.1. Gradle 9.6.0 is pinned with a distribution checksum.
 
 ```sh
 ./gradlew testDebugUnitTest lintRelease assembleDebug bundleRelease
 ```
 
-Application ID: `app.stereobridge`; debug variant adds `.debug`. Release signing is optional for local builds. To sign, set `STEREO_BRIDGE_SIGNING_PROPERTIES` to an external properties file containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword`. Keep all credentials outside this repository. Private recordings, lab logs, keys and local SDK settings are ignored.
+Application ID: `app.stereobridge`; debug variant adds `.debug`. Release signing is optional for local builds. Set `STEREO_BRIDGE_SIGNING_PROPERTIES` to an external properties file containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword` to sign. Keep credentials outside this repository.
 
-The packaged routing helper runs through an authenticated local ADB connection. No executable code is downloaded at runtime. Buffers are bounded; Stop cancels pending capture and routing work, and errors require explicit user retry. Current regression suite: 31 tests.
+The release app has no Internet permission or ADB dependency. A debug-only synthetic audio source supports camera/encoder checks without physical microphones; it is disabled in release builds. Private recordings, lab logs, keys and local SDK settings are ignored.
 
 ## Project
 
-[Privacy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Driver notes](docs/independent-driver-research.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Privacy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Driver notes](docs/independent-driver-research.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
 
-Apache-2.0 application source; bundled libraries retain their respective licenses. Independent project, not affiliated with or endorsed by DJI. Support: andrii@shylenko.com.
+Apache-2.0 application source; Google liblc3 retains its license. Independent project, not affiliated with or endorsed by DJI. Publisher: Artomatica. Support: andrii@shylenko.com.

@@ -1,138 +1,140 @@
 package app.stereobridge;
 
+import android.Manifest;
 import android.app.*;
 import android.bluetooth.*;
 import android.content.*;
-import android.content.pm.*;
+import android.content.pm.PackageManager;
 import android.graphics.*;
-import android.media.*;
 import android.os.*;
 import android.view.*;
 import android.widget.*;
-import java.io.*;
 import java.util.*;
 
+/** Offline camera screen: the primary action records and then saves a stereo video. */
 public final class MainActivity extends Activity {
-  private BridgeSettings settings;
-  private TextView status, time, detail, leftName, rightName, leftState, rightState, diagnostics;
   private Ui ui;
-  private Button repair, advancedButton;
-  private boolean expanded;
-  private Button record, bridge, stop, play, camera;
-  private Meter leftMeter, rightMeter;
-  private final Handler handler = new Handler();
-  private MediaPlayer player;
-  private boolean pendingCamera, launchWhenLive;
+  private BridgeSettings settings;
+  private TextureView preview;
+  private SurfaceTexture texture;
+  private OfflineRecorderService.LocalBinder recorder, previewOwner;
+  private boolean bound, resumed, pendingRecord, expanded;
+  private TextView status, leftLabel, rightLabel, timer;
+  private Button record, advancedButton, last;
   private LinearLayout advanced;
+  private Meter leftMeter, rightMeter;
+  private final Handler handler = new Handler(Looper.getMainLooper());
+  private final ServiceConnection connection =
+      new ServiceConnection() {
+        public void onServiceConnected(ComponentName n, IBinder binder) {
+          recorder = (OfflineRecorderService.LocalBinder) binder;
+          attach();
+          if (pendingRecord && resumed) permissions(true);
+        }
 
-  protected void onSaveInstanceState(Bundle state) {
-    state.putBoolean("advanced", expanded);
-    state.putBoolean("pending_camera", pendingCamera);
-    state.putBoolean("launch_when_live", launchWhenLive);
-    super.onSaveInstanceState(state);
-  }
+        public void onServiceDisconnected(ComponentName n) {
+          recorder = null;
+        }
+      };
 
-  private int dp(int n) {
-    return Math.round(n * getResources().getDisplayMetrics().density);
-  }
-
-  private TextView text(String s, int size) {
-    TextView t = new TextView(this);
-    t.setText(s);
-    t.setTextColor(ui.text);
-    t.setTextSize(size);
-    return t;
-  }
-
-  private Button button(LinearLayout root, String label, Runnable action) {
-    return ui.button(root, label, false, action);
-  }
-
-  public void onCreate(Bundle state) {
+  @Override
+  public void onCreate(Bundle saved) {
     Ui.theme(this);
-    super.onCreate(state);
+    super.onCreate(saved);
     ui = new Ui(this);
     settings = new BridgeSettings(this);
-    if (state != null) {
-      expanded = state.getBoolean("advanced");
-      pendingCamera = state.getBoolean("pending_camera");
-      launchWhenLive = state.getBoolean("launch_when_live");
-    }
+    if (saved != null) expanded = saved.getBoolean("advanced");
+    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     build();
   }
 
   private void build() {
+    LinearLayout footer = new LinearLayout(this);
+    footer.setOrientation(LinearLayout.VERTICAL);
     ScrollView scroll = new ScrollView(this);
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
     scroll.addView(root);
-    TextView brand = ui.caption("STEREO BRIDGE");
-    brand.setLetterSpacing(0.14f);
-    root.addView(brand);
+    root.addView(ui.caption("STEREO BRIDGE"));
     ui.space(root, 8);
-    root.addView(ui.text("Two mics.\nOne camera.", 34, true));
-    ui.space(root, 8);
-    root.addView(ui.caption("Receiver-free stereo audio for your camera."));
-    ui.space(root, 24);
-    LinearLayout session = ui.card(root);
-    status = ui.text("", 20, true);
-    session.addView(status);
-    ui.space(session, 6);
-    detail = ui.caption("");
-    session.addView(detail);
-    ui.space(session, 10);
-    time = ui.text("", 15, true);
-    time.setTextColor(ui.accent);
-    session.addView(time);
-    repair =
-        ui.button(
-            session,
-            "Camera setup",
-            false,
-            () -> startActivityForResult(new Intent(this, SetupActivity.class), 3));
-    LinearLayout l = ui.card(root);
-    l.addView(ui.text("L  /  LEFT", 12, true));
-    leftName = ui.text("", 17, true);
-    l.addView(leftName);
-    leftState = ui.caption("");
-    l.addView(leftState);
-    ui.space(l, 12);
-    leftMeter = new Meter(this, ui.accent, ui.border);
-    leftMeter.setContentDescription("Left microphone signal level");
-    l.addView(leftMeter, new LinearLayout.LayoutParams(-1, dp(12)));
-    LinearLayout r = ui.card(root);
-    r.addView(ui.text("R  /  RIGHT", 12, true));
-    rightName = ui.text("", 17, true);
-    r.addView(rightName);
-    rightState = ui.caption("");
-    r.addView(rightState);
-    ui.space(r, 12);
-    rightMeter = new Meter(this, ui.blue, ui.border);
-    rightMeter.setContentDescription("Right microphone signal level");
-    r.addView(rightMeter, new LinearLayout.LayoutParams(-1, dp(12)));
-    bridge =
-        ui.button(
-            root,
-            "Start",
-            true,
-            () -> {
-              if (busy()) {
-                launchWhenLive = false;
-                startService(new Intent(this, BridgeService.class).setAction(BridgeService.STOP));
-              } else start(true);
-            });
-    ui.space(root, 8);
+    root.addView(ui.text("Two mics.\nOne recording.", 30, true));
+    root.addView(ui.caption("Stereo video. No receiver. Works offline."));
+    ui.space(root, 16);
+    preview = new TextureView(this);
+    preview.setOpaque(true);
+    FrameLayout previewFrame = new FrameLayout(this);
+    previewFrame.setBackgroundColor(Color.BLACK);
+    previewFrame.addView(preview, new FrameLayout.LayoutParams(-1, -1));
+    root.addView(previewFrame, new LinearLayout.LayoutParams(-1, ui.dp(250)));
+    preview.setSurfaceTextureListener(
+        new TextureView.SurfaceTextureListener() {
+          public void onSurfaceTextureAvailable(SurfaceTexture texture, int width, int height) {
+            MainActivity.this.texture = texture;
+            attach();
+            transform(width, height);
+          }
+
+          public void onSurfaceTextureSizeChanged(SurfaceTexture t, int w, int h) {
+            transform(w, h);
+          }
+
+          public boolean onSurfaceTextureDestroyed(SurfaceTexture t) {
+            if (previewOwner != null) previewOwner.detachPreview(t, true);
+            else t.release();
+            previewOwner = null;
+            texture = null;
+            return false;
+          }
+
+          public void onSurfaceTextureUpdated(SurfaceTexture t) {}
+        });
+    ui.space(root, 12);
+    status = ui.text("Ready to record", 18, true);
+    root.addView(status);
+    timer = ui.caption("");
+    root.addView(timer);
+    ui.space(root, 12);
+    LinearLayout mics = ui.card(root);
+    leftLabel = ui.caption("");
+    mics.addView(leftLabel);
+    leftMeter = new Meter(ui.accent);
+    mics.addView(leftMeter, new LinearLayout.LayoutParams(-1, ui.dp(10)));
+    ui.space(mics, 12);
+    rightLabel = ui.caption("");
+    mics.addView(rightLabel);
+    rightMeter = new Meter(ui.blue);
+    mics.addView(rightMeter, new LinearLayout.LayoutParams(-1, ui.dp(10)));
+    record = ui.button(footer, "Record", true, this::recordOrStop);
     TextView hint =
         ui.caption(
-            "Start connects both mics and opens Camera.\n"
-                + "Use Camera’s record button to shoot video.");
+            "Tap Record to connect both mics and start video.\n"
+                + "Tap Stop to save to Movies / Stereo Bridge.");
     hint.setGravity(Gravity.CENTER);
-    root.addView(hint);
-    ui.space(root, 12);
+    footer.addView(hint);
+    last =
+        ui.button(
+            root,
+            "Open last video",
+            false,
+            () -> {
+              String uri = OfflineRecorderService.state.savedUri();
+              if (!uri.isEmpty())
+                try {
+                  startActivity(
+                      new Intent(Intent.ACTION_VIEW)
+                          .setDataAndType(android.net.Uri.parse(uri), "video/mp4")
+                          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                } catch (Exception e) {
+                  Toast.makeText(
+                          this, "Find your video in Movies / Stereo Bridge", Toast.LENGTH_LONG)
+                      .show();
+                }
+            });
     advancedButton =
-        button(
+        ui.button(
             root,
             expanded ? "Hide controls" : "Advanced controls",
+            false,
             () -> {
               expanded = !expanded;
               advanced.setVisibility(expanded ? View.VISIBLE : View.GONE);
@@ -142,51 +144,59 @@ public final class MainActivity extends Activity {
     advanced.setOrientation(LinearLayout.VERTICAL);
     advanced.setVisibility(expanded ? View.VISIBLE : View.GONE);
     root.addView(advanced);
-    mic(advanced, true);
-    mic(advanced, false);
+    microphone(true);
+    microphone(false);
     CheckBox swap = new CheckBox(this);
-    swap.setText("Swap left and right output");
+    swap.setText("Swap left and right");
     ui.controls(swap);
     swap.setChecked(settings.flag("swap"));
     swap.setOnCheckedChangeListener((b, v) -> settings.flag("swap", v));
     advanced.addView(swap);
-    record = button(advanced, "Record audio preview", () -> start(false));
-    stop =
-        button(
-            advanced,
-            "Stop and save preview",
-            () ->
-                startService(new Intent(this, BridgeService.class).setAction(BridgeService.STOP)));
-    camera = button(advanced, "Open camera", this::openCamera);
-    play = button(advanced, "Play last preview", this::play);
-    button(advanced, "Camera setup", () -> startActivity(new Intent(this, SetupActivity.class)));
-    button(advanced, "Choose camera app", this::chooseCamera);
-    diagnostics = ui.caption("");
-    ui.space(advanced, 12);
-    advanced.addView(diagnostics);
-    ui.screen(scroll, root);
+    ui.button(
+        advanced,
+        "Pair microphones",
+        false,
+        () -> startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)));
+    advanced.addView(
+        ui.caption(
+            "First use: pair two original DJI Mic Mini transmitters and allow camera, microphone"
+                + " and nearby devices access. Your choices are saved after reboot. Wi-Fi and"
+                + " debugging are not needed. Other microphone models are unsupported."));
+    ui.screen(scroll, root, footer);
     refresh();
   }
 
-  private boolean busy() {
-    return BridgeState.phase == BridgeState.Phase.LIVE
-        || BridgeState.phase == BridgeState.Phase.CONNECTING
-        || BridgeState.phase == BridgeState.Phase.STOPPING;
+  private void transform(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    int[] info = recorder == null ? new int[] {1920, 1080, 90} : recorder.previewInfo();
+    float sw = info[0], sh = info[1];
+    double angle = Math.toRadians(info[2]);
+    float rotatedWidth = info[2] % 180 == 0 ? sw : sh, rotatedHeight = info[2] % 180 == 0 ? sh : sw;
+    float scale = Math.max(width / rotatedWidth, height / rotatedHeight);
+    float[] source = {0, 0, width, 0, width, height, 0, height}, target = new float[8];
+    float[] corners = {-sw / 2, -sh / 2, sw / 2, -sh / 2, sw / 2, sh / 2, -sw / 2, sh / 2};
+    for (int n = 0; n < 4; n++) {
+      float x = corners[n * 2], y = corners[n * 2 + 1];
+      target[n * 2] = width / 2f + scale * (float) (x * Math.cos(angle) - y * Math.sin(angle));
+      target[n * 2 + 1] = height / 2f + scale * (float) (x * Math.sin(angle) + y * Math.cos(angle));
+    }
+    Matrix matrix = new Matrix();
+    matrix.setPolyToPoly(source, 0, target, 0, 4);
+    preview.setTransform(matrix);
   }
 
-  private Meter mic(LinearLayout root, boolean left) {
-    TextView heading = text(left ? "LEFT MICROPHONE" : "RIGHT MICROPHONE", 13);
-    heading.setPadding(0, dp(24), 0, dp(4));
-    root.addView(heading);
-    button(root, settings.name(left), () -> selectMic(left));
-    Meter meter = new Meter(this, left ? ui.accent : ui.blue, ui.border);
-
-    TextView gain = text("Gain " + Math.round(settings.gain(left) * 100) + "%", 14);
-    root.addView(gain);
+  private void microphone(boolean left) {
+    ui.button(
+        advanced,
+        left ? "Choose left microphone" : "Choose right microphone",
+        false,
+        () -> select(left));
+    TextView gain = ui.caption("Gain " + Math.round(settings.gain(left) * 100) + "%");
+    advanced.addView(gain);
     SeekBar slider = new SeekBar(this);
-    slider.setMinimumHeight(dp(48));
     slider.setMax(200);
     slider.setProgress(Math.round(settings.gain(left) * 100));
+    slider.setMinimumHeight(ui.dp(48));
     slider.setOnSeekBarChangeListener(
         new SeekBar.OnSeekBarChangeListener() {
           public void onProgressChanged(SeekBar s, int p, boolean user) {
@@ -198,287 +208,199 @@ public final class MainActivity extends Activity {
 
           public void onStopTrackingTouch(SeekBar s) {}
         });
-    slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));
-    slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
-    root.addView(slider);
+    advanced.addView(slider);
     CheckBox mute = new CheckBox(this);
-    mute.setText("Mute " + (left ? "left" : "right"));
+    mute.setText(left ? "Mute left" : "Mute right");
     ui.controls(mute);
     mute.setChecked(settings.flag(left ? "mute_left" : "mute_right"));
     mute.setOnCheckedChangeListener((b, v) -> settings.flag(left ? "mute_left" : "mute_right", v));
-    root.addView(mute);
-    return meter;
+    advanced.addView(mute);
   }
 
-  private void selectMic(boolean left) {
-    if (BridgeState.phase != BridgeState.Phase.STOPPED
-        && BridgeState.phase != BridgeState.Phase.ERROR) {
+  private void select(boolean left) {
+    if (OfflineRecorderService.state.busy()) {
       Toast.makeText(this, "Stop before changing microphones", Toast.LENGTH_SHORT).show();
       return;
     }
-    if (checkSelfPermission("android.permission.BLUETOOTH_CONNECT")
+    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
         != PackageManager.PERMISSION_GRANTED) {
-      requestPermissions(new String[] {"android.permission.BLUETOOTH_CONNECT"}, 2);
+      requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, 2);
       return;
     }
-    BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
-    List<BluetoothDevice> devices = new ArrayList<>();
-    if (adapter != null)
-      for (BluetoothDevice d : adapter.getBondedDevices())
-        if (d.getName() != null && d.getName().startsWith("DJI Mic Mini")) devices.add(d);
+    List<BluetoothDevice> devices = devices();
     if (devices.isEmpty()) {
-      new AlertDialog.Builder(this)
-          .setMessage("Pair your DJI Mic Mini transmitters in Android Bluetooth settings first.")
-          .setPositiveButton(
-              "Open Bluetooth",
-              (d, w) ->
-                  startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)))
-          .setNegativeButton("Close", null)
-          .show();
+      pairingHelp();
       return;
     }
-    String[] labels =
-        devices.stream().map(d -> d.getName() + "\n" + d.getAddress()).toArray(String[]::new);
+    String[] labels = devices.stream().map(d -> d.getName()).toArray(String[]::new);
     new AlertDialog.Builder(this)
-        .setTitle(left ? "Choose left microphone" : "Choose right microphone")
+        .setTitle(left ? "Left microphone" : "Right microphone")
         .setItems(
             labels,
-            (dialog, n) -> {
-              BluetoothDevice d = devices.get(n);
+            (dialog, i) -> {
+              BluetoothDevice d = devices.get(i);
               settings.microphone(left, d.getAddress(), d.getName());
-              build();
+              refresh();
             })
+        .setNegativeButton("Cancel", null)
         .show();
   }
 
-  private void start(boolean routed) {
-    pendingCamera = routed;
-    List<String> permissions = new ArrayList<>();
+  private List<BluetoothDevice> devices() {
+    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        != PackageManager.PERMISSION_GRANTED) return Collections.emptyList();
+    List<BluetoothDevice> found = new ArrayList<>();
+    BluetoothManager manager = getSystemService(BluetoothManager.class);
+    BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+    if (adapter != null)
+      for (BluetoothDevice d : adapter.getBondedDevices())
+        if (d.getName() != null
+            && d.getName().startsWith("DJI Mic Mini")
+            && !d.getName().startsWith("DJI Mic Mini 2")) found.add(d);
+    found.sort(Comparator.comparing(BluetoothDevice::getAddress));
+    return found;
+  }
+
+  private void pairingHelp() {
+    new AlertDialog.Builder(this)
+        .setTitle("Pair your two microphones")
+        .setMessage(
+            "Pair both original DJI Mic Mini transmitters in Android Bluetooth settings. Then"
+                + " return and tap Record. If more than two are paired, choose left and right in"
+                + " Advanced.")
+        .setPositiveButton(
+            "Open Bluetooth",
+            (d, w) ->
+                startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)))
+        .setNegativeButton("Close", null)
+        .show();
+  }
+
+  private void recordOrStop() {
+    if (OfflineRecorderService.state.busy()) {
+      if (OfflineRecorderService.state.phase() != OfflineSessionState.Phase.SAVING)
+        startService(
+            new Intent(this, OfflineRecorderService.class).setAction(OfflineRecorderService.STOP));
+      return;
+    }
+    pendingRecord = true;
+    permissions(true);
+  }
+
+  private void permissions(boolean recording) {
+    List<String> missing = new ArrayList<>();
     for (String p :
         new String[] {
-          "android.permission.BLUETOOTH_CONNECT",
-          "android.permission.RECORD_AUDIO",
-          "android.permission.POST_NOTIFICATIONS"
+          Manifest.permission.CAMERA,
+          Manifest.permission.RECORD_AUDIO,
+          Manifest.permission.BLUETOOTH_CONNECT
         })
-      if ((Build.VERSION.SDK_INT >= 33 || !p.endsWith("POST_NOTIFICATIONS"))
-          && checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED
-          && (!p.endsWith("POST_NOTIFICATIONS") || !settings.flag("notification_asked")))
-        permissions.add(p);
-    if (!permissions.isEmpty()) {
-      settings.flag("notification_asked", true);
-      requestPermissions(permissions.toArray(new String[0]), 1);
-      return;
-    }
-    if (routed
+      if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED
+          && (recording || p.equals(Manifest.permission.CAMERA))) missing.add(p);
+    if (recording
         && Build.VERSION.SDK_INT >= 33
-        && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-            != PackageManager.PERMISSION_GRANTED
-        && !settings.flag("notification_warning_seen")) {
-      settings.flag("notification_warning_seen", true);
-      new AlertDialog.Builder(this)
-          .setTitle("Keep connection alerts visible")
-          .setMessage(
-              "Allow notifications so you can see microphone failures while Camera is open. Without"
-                  + " them, check Stereo Bridge to confirm the connection is still live.")
-          .setPositiveButton(
-              "Enable alerts",
-              (d, w) ->
-                  startActivity(
-                      new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                          .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName())))
-          .setNegativeButton("Continue", (d, w) -> start(true))
-          .show();
+        && !settings.flag("notification_asked")
+        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) {
+      settings.flag("notification_asked", true);
+      missing.add(Manifest.permission.POST_NOTIFICATIONS);
+    }
+    if (!missing.isEmpty()) {
+      requestPermissions(missing.toArray(new String[0]), 1);
       return;
     }
-    if (settings.address(true).isEmpty() || settings.address(false).isEmpty()) {
-      BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
-      List<BluetoothDevice> found = new ArrayList<>();
-      if (adapter != null)
-        for (BluetoothDevice device : adapter.getBondedDevices())
-          if (device.getName() != null && device.getName().startsWith("DJI Mic Mini"))
-            found.add(device);
-      found.sort(Comparator.comparing(BluetoothDevice::getAddress));
+    attach();
+    if (recording) startRecording();
+  }
+
+  private void startRecording() {
+    boolean synthetic = BuildConfig.DEBUG && getIntent().getBooleanExtra("synthetic", false);
+    if (!synthetic
+        && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            != PackageManager.PERMISSION_GRANTED) {
+      pendingRecord = false;
+      return;
+    }
+    if (!synthetic && (settings.address(true).isEmpty() || settings.address(false).isEmpty())) {
+      List<BluetoothDevice> found = devices();
       if (found.size() == 2
           && settings.address(true).isEmpty()
           && settings.address(false).isEmpty()) {
-        for (int i = 0; i < 2; i++)
-          settings.microphone(i == 0, found.get(i).getAddress(), found.get(i).getName());
+        for (int n = 0; n < 2; n++)
+          settings.microphone(n == 0, found.get(n).getAddress(), found.get(n).getName());
       } else {
-        new AlertDialog.Builder(this)
-            .setMessage(
-                "Pair both DJI Mic Mini microphones in Android Bluetooth settings. If you have more"
-                    + " than two, choose left and right in Advanced.")
-            .setPositiveButton(
-                "Open Bluetooth",
-                (d, w) ->
-                    startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)))
-            .setNegativeButton("Close", null)
-            .show();
+        pairingHelp();
         return;
       }
     }
-    if (routed && (!settings.flag("adb_paired") || settings.get("adb_port", "").isEmpty())) {
-      startActivityForResult(new Intent(this, SetupActivity.class), 3);
+    if (recorder == null) {
+      pendingRecord = true;
       return;
     }
-    stopPlayback();
-    launchWhenLive = routed;
-    startForegroundService(new Intent(this, BridgeService.class).putExtra("camera", routed));
+    pendingRecord = false;
+    startForegroundService(
+        new Intent(this, OfflineRecorderService.class)
+            .setAction(OfflineRecorderService.START)
+            .putExtra("synthetic", synthetic));
   }
 
-  protected void onActivityResult(int request, int result, Intent data) {
-    super.onActivityResult(request, result, data);
-    if (request == 3 && result == RESULT_OK) start(true);
-  }
-
-  public void onRequestPermissionsResult(int r, String[] p, int[] g) {
-    super.onRequestPermissionsResult(r, p, g);
-    if (r == 1 && g.length > 0) {
-      for (int i = 0; i < g.length; i++)
-        if (g[i] != PackageManager.PERMISSION_GRANTED && !p[i].endsWith("POST_NOTIFICATIONS")) {
-          Toast.makeText(
-                  this, "Allow microphone and Bluetooth access to record", Toast.LENGTH_SHORT)
-              .show();
-          return;
-        }
-      start(pendingCamera);
+  private void attach() {
+    if (recorder != null
+        && texture != null
+        && resumed
+        && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+      previewOwner = recorder;
+      recorder.attachPreview(texture);
     }
   }
 
-  private void openCamera() {
-    Intent video = new Intent("android.media.action.VIDEO_CAMERA").setPackage(settings.camera());
-    if (video.resolveActivity(getPackageManager()) != null) {
-      startActivity(video);
-      return;
-    }
-    Intent launch = getPackageManager().getLaunchIntentForPackage(settings.camera());
-    if (launch == null) {
-      Toast.makeText(this, "Choose an installed camera app in Advanced", Toast.LENGTH_SHORT).show();
-      return;
-    }
-    startActivity(launch);
-  }
-
-  private void chooseCamera() {
-    if (busy()) {
-      Toast.makeText(this, "Stop before changing the camera app", Toast.LENGTH_SHORT).show();
-      return;
-    }
-    List<ResolveInfo> list =
-        getPackageManager()
-            .queryIntentActivities(new Intent("android.media.action.VIDEO_CAMERA"), 0);
-    if (list.isEmpty()) {
-      Toast.makeText(this, "No video camera found", Toast.LENGTH_SHORT).show();
-      return;
-    }
-    String[] names =
-        list.stream().map(r -> r.loadLabel(getPackageManager()).toString()).toArray(String[]::new);
-    new AlertDialog.Builder(this)
-        .setTitle("Camera app")
-        .setItems(names, (d, n) -> settings.set("camera", list.get(n).activityInfo.packageName))
-        .show();
-  }
-
-  private void play() {
-    try {
-      stopPlayback();
-      player = new MediaPlayer();
-      player.setAudioAttributes(
-          new AudioAttributes.Builder()
-              .setUsage(AudioAttributes.USAGE_MEDIA)
-              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-              .build());
-      player.setDataSource(new File(getFilesDir(), "last-take.wav").getAbsolutePath());
-      for (AudioDeviceInfo d :
-          getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_OUTPUTS))
-        if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) player.setPreferredDevice(d);
-      player.prepare();
-      player.setOnCompletionListener(
-          m -> {
-            stopPlayback();
-            refresh();
-          });
-      player.start();
-      refresh();
-    } catch (Exception e) {
-      stopPlayback();
-      new AlertDialog.Builder(this)
-          .setMessage("Playback failed: " + e.getMessage())
-          .setPositiveButton("Close", null)
-          .show();
-    }
-  }
-
-  private void stopPlayback() {
-    if (player != null) {
-      player.release();
-      player = null;
+  @Override
+  public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+    super.onRequestPermissionsResult(request, permissions, results);
+    if (request == 1) {
+      boolean requiredGranted = true;
+      for (int n = 0; n < permissions.length; n++)
+        if (!permissions[n].equals(Manifest.permission.POST_NOTIFICATIONS)
+            && results[n] != PackageManager.PERMISSION_GRANTED) requiredGranted = false;
+      if (requiredGranted) permissions(pendingRecord);
+      else {
+        pendingRecord = false;
+        OfflineRecorderService.state.fail(
+            "Allow camera, microphone and nearby devices access to record.");
+      }
     }
   }
 
   private void refresh() {
-    boolean busy =
-        BridgeState.phase == BridgeState.Phase.LIVE
-            || BridgeState.phase == BridgeState.Phase.CONNECTING
-            || BridgeState.phase == BridgeState.Phase.STOPPING;
-    SessionPresentation presentation =
-        SessionPresentation.of(BridgeState.phase, BridgeState.cameraMode);
-    status.setText(presentation.title);
-    status.setTextColor(BridgeState.phase == BridgeState.Phase.ERROR ? ui.danger : ui.text);
-    detail.setText(
-        BridgeState.phase == BridgeState.Phase.STOPPED
-            ? "Your phone handles the audio. Camera handles the video."
-            : BridgeState.phase == BridgeState.Phase.LIVE
-                ? (BridgeState.cameraMode
-                    ? "Both microphones are live. Record in your camera app."
-                    : "Speak into each microphone, then stop and replay.")
-                : BridgeState.message);
-    long seconds = Math.max(0, (SystemClock.elapsedRealtime() - BridgeState.startedAt) / 1000);
-    time.setText(
-        BridgeState.phase == BridgeState.Phase.LIVE
-            ? String.format(
-                Locale.ROOT,
-                "%02d:%02d · %s",
-                seconds / 60,
-                seconds % 60,
-                BridgeState.cameraMode ? "Stereo connected" : "Audio preview")
-            : player != null ? "Playing through phone speaker" : "");
-    time.setVisibility(time.getText().length() == 0 ? View.GONE : View.VISIBLE);
-    repair.setVisibility(BridgeState.phase == BridgeState.Phase.ERROR ? View.VISIBLE : View.GONE);
-    leftName.setText(
-        settings.address(true).isEmpty() ? "Auto-select on Start" : settings.name(true));
-    rightName.setText(
-        settings.address(false).isEmpty() ? "Auto-select on Start" : settings.name(false));
-    leftState.setText(micState(true));
-    rightState.setText(micState(false));
-    diagnostics.setText(
-        "Live input buffer drops: " + BridgeState.droppedFrames + "\nCamera: " + settings.camera());
-    record.setEnabled(!busy);
-    bridge.setEnabled(presentation.enabled);
-    bridge.setText(presentation.action);
-    stop.setEnabled(busy && !BridgeState.cameraMode);
-    camera.setEnabled(BridgeState.phase == BridgeState.Phase.LIVE && BridgeState.cameraMode);
-    play.setEnabled(!busy && new File(getFilesDir(), "last-take.wav").exists());
-    leftMeter.level = BridgeState.leftLevel;
-    rightMeter.level = BridgeState.rightLevel;
+    transform(preview.getWidth(), preview.getHeight());
+    OfflineSessionState s = OfflineRecorderService.state;
+    status.setText(s.message());
+    status.setTextColor(s.phase() == OfflineSessionState.Phase.ERROR ? ui.danger : ui.text);
+    leftLabel.setText(
+        "L · "
+            + (settings.address(true).isEmpty() ? "Auto-select on Record" : settings.name(true)));
+    rightLabel.setText(
+        "R · "
+            + (settings.address(false).isEmpty() ? "Auto-select on Record" : settings.name(false)));
+    leftMeter.level = OfflineRecorderService.leftLevel;
+    rightMeter.level = OfflineRecorderService.rightLevel;
     leftMeter.invalidate();
     rightMeter.invalidate();
-    if (launchWhenLive && BridgeState.phase == BridgeState.Phase.LIVE) {
-      launchWhenLive = false;
-      openCamera();
-    }
-    if (BridgeState.phase == BridgeState.Phase.ERROR) launchWhenLive = false;
-  }
-
-  private String micState(boolean left) {
-    if (!busy())
-      return settings.address(left).isEmpty()
-          ? "Pair both mics in Bluetooth settings"
-          : "Selected · connects on Start";
-    if (settings.flag(left ? "mute_left" : "mute_right")) return "Muted · no audio sent";
-    int level = left ? BridgeState.leftLevel : BridgeState.rightLevel;
-    if (level >= 32700) return "Clipping · lower the gain in Advanced";
-    return left ? BridgeState.leftStatus : BridgeState.rightStatus;
+    String action =
+        s.phase() == OfflineSessionState.Phase.SAVING
+            ? "Saving…"
+            : s.phase() == OfflineSessionState.Phase.CONNECTING
+                ? "Cancel"
+                : s.phase() == OfflineSessionState.Phase.RECORDING ? "Stop" : "Record";
+    record.setText(action);
+    record.setEnabled(s.phase() != OfflineSessionState.Phase.SAVING);
+    long seconds =
+        Math.max(0, (SystemClock.elapsedRealtime() - OfflineRecorderService.startedAt) / 1000);
+    timer.setText(
+        s.phase() == OfflineSessionState.Phase.RECORDING
+            ? String.format(Locale.ROOT, "%02d:%02d · Stereo recording", seconds / 60, seconds % 60)
+            : "");
+    last.setEnabled(!s.busy() && !s.savedUri().isEmpty());
   }
 
   private final Runnable tick =
@@ -489,40 +411,63 @@ public final class MainActivity extends Activity {
         }
       };
 
-  protected void onResume() {
-    super.onResume();
-    handler.post(tick);
-    LocalDiscovery.refresh(this);
+  @Override
+  protected void onStart() {
+    super.onStart();
+    bound =
+        bindService(
+            new Intent(this, OfflineRecorderService.class), connection, Context.BIND_AUTO_CREATE);
   }
 
+  @Override
+  protected void onResume() {
+    super.onResume();
+    resumed = true;
+    handler.post(tick);
+    permissions(false);
+  }
+
+  @Override
   protected void onPause() {
+    resumed = false;
     handler.removeCallbacks(tick);
+    if (recorder != null) recorder.detachPreview(texture, false);
     super.onPause();
   }
 
-  protected void onDestroy() {
-    stopPlayback();
-    super.onDestroy();
+  @Override
+  protected void onStop() {
+    if (bound) {
+      unbindService(connection);
+      bound = false;
+      recorder = null;
+    }
+    super.onStop();
   }
 
-  private static final class Meter extends View {
-    int level, color, background;
-    Paint paint = new Paint();
+  @Override
+  protected void onSaveInstanceState(Bundle out) {
+    out.putBoolean("advanced", expanded);
+    super.onSaveInstanceState(out);
+  }
 
-    Meter(Context c, int color, int background) {
-      super(c);
+  private final class Meter extends View {
+    int level;
+    final int color;
+    final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    Meter(int color) {
+      super(MainActivity.this);
       this.color = color;
-      this.background = background;
+      setContentDescription(
+          color == ui.accent ? "Left microphone level" : "Right microphone level");
     }
 
     protected void onDraw(Canvas c) {
-      paint.setColor(background);
+      paint.setColor(ui.border);
       c.drawRoundRect(0, 0, getWidth(), getHeight(), 8, 8, paint);
-      float width =
-          (float) Math.max(0, (20 * Math.log10(Math.max(1, level) / 32768.0) + 60) / 60)
-              * getWidth();
-      paint.setColor(level >= 32700 ? Color.RED : color);
-      c.drawRoundRect(0, 0, Math.min(getWidth(), width), getHeight(), 8, 8, paint);
+      paint.setColor(color);
+      c.drawRoundRect(0, 0, getWidth() * Math.min(1, level / 32768f), getHeight(), 8, 8, paint);
     }
   }
 }
