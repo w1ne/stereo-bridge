@@ -46,18 +46,33 @@ public final class OfflineRecorderService extends Service {
   private int sessionUses;
   private final Set<CameraDevice> closingDevices =
       Collections.newSetFromMap(new IdentityHashMap<>());
+  private final Set<CameraDevice> deferredDeviceCloses =
+      Collections.newSetFromMap(new IdentityHashMap<>());
   private CountDownLatch cameraCleanup;
 
   private void closeDevice(CameraDevice device) {
-    closingDevices.add(device);
-    device.close();
+    // Session.close drains capture sequences asynchronously. Closing its device before
+    // onClosed suppresses the sequence callbacks on Android 12 and strands that drain.
+    deferredDeviceCloses.add(device);
+    closeDrainedDevices();
+  }
+
+  private void closeDrainedDevices() {
+    if (sessionUses != 0) return;
+    for (CameraDevice device : new ArrayList<>(deferredDeviceCloses)) {
+      deferredDeviceCloses.remove(device);
+      closingDevices.add(device);
+      device.close();
+    }
   }
 
   private void completeCameraCleanup() {
+    closeDrainedDevices();
     if (cameraCleanup != null
         && !opening
         && camera == null
         && closingDevices.isEmpty()
+        && deferredDeviceCloses.isEmpty()
         && sessionUses == 0) {
       CountDownLatch completed = cameraCleanup;
       cameraCleanup = null;
@@ -123,6 +138,7 @@ public final class OfflineRecorderService extends Service {
         && !opening
         && camera == null
         && closingDevices.isEmpty()
+        && deferredDeviceCloses.isEmpty()
         && sessionUses == 0) cameraThread.quitSafely();
   }
 
@@ -525,7 +541,8 @@ public final class OfflineRecorderService extends Service {
         configure();
         return;
       }
-      if (opening || (!active.get() && preview == null)) return;
+      if (opening || !deferredDeviceCloses.isEmpty() || !closingDevices.isEmpty()
+          || (!active.get() && preview == null)) return;
       CameraManager manager = getSystemService(CameraManager.class);
       chooseCamera(manager);
       opening = true;
@@ -565,6 +582,8 @@ public final class OfflineRecorderService extends Service {
             public void onClosed(CameraDevice device) {
               closingDevices.remove(device);
               maybeQuitCameraThread();
+              if (!destroyed && cameraCleanup == null && preview != null && worker == null)
+                ensureCamera();
             }
           },
           cameraHandler);
@@ -710,6 +729,12 @@ public final class OfflineRecorderService extends Service {
   private void closeCamera() {
     configuration++;
     if (cameraSession != null) {
+      try {
+        cameraSession.stopRepeating();
+        cameraSession.abortCaptures();
+      } catch (CameraAccessException | IllegalStateException ignored) {
+        // Closing is still required if the device already disconnected.
+      }
       cameraSession.close();
       cameraSession = null;
     }

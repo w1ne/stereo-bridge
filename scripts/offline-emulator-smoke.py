@@ -124,7 +124,6 @@ def run():
     assert adb('shell','settings','get','global','wifi_on').strip()=='0', 'Wi-Fi enabled after reboot'
     screenshot('after-reboot')
     take('after-reboot-take')
-    adb('pull', '/sdcard/Movies/Stereo Bridge', str(out / 'videos'))
     (out / 'logcat.txt').write_text(adb('logcat', '-d'))
     print('PASS: three saved takes, repeated session, background/screen sleep, reboot, Wi-Fi off. '
           'Synthetic audio only; Bluetooth and Pixel still unverified.', flush=True)
