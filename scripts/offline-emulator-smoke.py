@@ -35,9 +35,9 @@ def adb(*parts, check=True):
 
 
 def nodes():
-    adb('shell', 'rm', '-f', '/sdcard/stereo-ui.xml')
-    output = adb('shell', 'uiautomator', 'dump', '/sdcard/stereo-ui.xml')
-    data = adb('shell', 'cat', '/sdcard/stereo-ui.xml', check=False)
+    adb('shell', 'rm', '-f', '/data/local/tmp/stereo-ui.xml')
+    output = adb('shell', 'uiautomator', 'dump', '/data/local/tmp/stereo-ui.xml')
+    data = adb('shell', 'cat', '/data/local/tmp/stereo-ui.xml', check=False)
     if not data.lstrip().startswith('<?xml'):
         (out / 'ui-dump-error.txt').write_text(output + data)
         return []
@@ -115,6 +115,16 @@ def run():
         raise RuntimeError('Emulator reboot timeout')
     adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
     adb('shell', 'wm', 'dismiss-keyguard')
+    end = time.monotonic() + 90
+    while time.monotonic() < end:
+        ready = adb('shell', 'sh', '-c',
+                    '"echo ready > /sdcard/stereo-storage-ready && '
+                    'rm /sdcard/stereo-storage-ready && echo STORAGE_READY"', check=False)
+        if 'STORAGE_READY' in ready:
+            break
+        time.sleep(2)
+    else:
+        raise RuntimeError('Shared storage unavailable after reboot/unlock: ' + ready)
     launch()
     dimensions=list(map(int,re.findall(r'\d+',adb('shell','wm','size'))[-2:]))
     width,height=dimensions
