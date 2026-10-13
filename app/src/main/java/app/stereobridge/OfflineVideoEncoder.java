@@ -137,7 +137,7 @@ public final class OfflineVideoEncoder {
         boolean progress = feedAudio();
         progress |= drain(video, true) | drain(audio, false);
         flushPending();
-        if (stopping && SystemClock.elapsedRealtime() > stopDeadline)
+        if (signalled && SystemClock.elapsedRealtime() > stopDeadline)
           throw new IOException("Codec EOS timeout");
         if (!progress) Thread.sleep(2);
       }
