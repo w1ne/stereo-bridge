@@ -90,31 +90,41 @@ def take(name, background=False):
     screenshot(name)
     print('Saved ' + name, flush=True)
 
-adb('shell', 'svc', 'wifi', 'disable')
-adb('shell', 'settings', 'put', 'global', 'mobile_data', '0')
-for permission in ['CAMERA', 'RECORD_AUDIO', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS']:
-    adb('shell', 'pm', 'grant', pkg, 'android.permission.' + permission, check=False)
-adb('logcat', '-c')
-launch()
-screenshot('ready')
-take('first')
-take('repeat-background', background=True)
-print('Rebooting emulator; no pairing/debug setup in app', flush=True)
-adb('reboot')
-end = time.monotonic() + 180
-while time.monotonic() < end:
-    if adb('shell', 'getprop', 'sys.boot_completed', check=False).strip() == '1':
-        break
-    time.sleep(2)
-else:
-    raise RuntimeError('Emulator reboot timeout')
-adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
-adb('shell', 'wm', 'dismiss-keyguard')
-launch()
-wait_text('Open last video')
-screenshot('after-reboot')
-take('after-reboot-take')
-adb('pull', '/sdcard/Movies/Stereo Bridge', str(out / 'videos'))
-(out / 'logcat.txt').write_text(adb('logcat', '-d'))
-print('PASS: three saved takes, repeated session, background/screen sleep, reboot, Wi-Fi off. '
-      'Synthetic audio only; Bluetooth and Pixel still unverified.', flush=True)
+def run():
+    adb('shell', 'svc', 'wifi', 'disable')
+    adb('shell', 'settings', 'put', 'global', 'mobile_data', '0')
+    for permission in ['CAMERA', 'RECORD_AUDIO', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS']:
+        adb('shell', 'pm', 'grant', pkg, 'android.permission.' + permission, check=False)
+    adb('logcat', '-c')
+    launch()
+    screenshot('ready')
+    take('first')
+    take('repeat-background', background=True)
+    print('Rebooting emulator; no pairing/debug setup in app', flush=True)
+    adb('reboot')
+    end = time.monotonic() + 180
+    while time.monotonic() < end:
+        if adb('shell', 'getprop', 'sys.boot_completed', check=False).strip() == '1':
+            break
+        time.sleep(2)
+    else:
+        raise RuntimeError('Emulator reboot timeout')
+    adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+    adb('shell', 'wm', 'dismiss-keyguard')
+    launch()
+    wait_text('Open last video')
+    screenshot('after-reboot')
+    take('after-reboot-take')
+    adb('pull', '/sdcard/Movies/Stereo Bridge', str(out / 'videos'))
+    (out / 'logcat.txt').write_text(adb('logcat', '-d'))
+    print('PASS: three saved takes, repeated session, background/screen sleep, reboot, Wi-Fi off. '
+          'Synthetic audio only; Bluetooth and Pixel still unverified.', flush=True)
+
+try:
+    run()
+finally:
+    try:
+        (out / 'logcat.txt').write_text(adb('logcat', '-d'))
+        screenshot('final-state')
+    except Exception as error:
+        print('Could not capture final diagnostic state:', error, flush=True)
