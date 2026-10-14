@@ -1,6 +1,6 @@
 # Privacy — offline recorder candidate
 
-This policy describes Stereo Bridge 0.2.0-offline-rc2 (version code 5). The previously published bridge uses the policy distributed with that release.
+This policy describes Stereo Bridge 0.2.0-offline-rc3 (version code 6). The previously published bridge uses the policy distributed with that release.
 
 Stereo Bridge records camera video and audio from the two selected original DJI Mic Mini Bluetooth transmitters only after you tap Record. Capture continues when the screen sleeps or another app is open. Tap Stop in the app or recording notification to finish; cancel startup to cancel. A capture connection failure stops capture. Recording does not start automatically after reboot. If notifications are disabled, return to the app to Stop; enable them in Notification settings for a visible Stop action.
 

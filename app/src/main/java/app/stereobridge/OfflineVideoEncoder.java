@@ -79,11 +79,15 @@ public final class OfflineVideoEncoder {
       format.setInteger(MediaFormat.KEY_FRAME_RATE, rate);
       format.setInteger(MediaFormat.KEY_BIT_RATE, VideoCapabilityPolicy.bitrate(width,height,rate,v.getBitrateRange().getLower(),v.getBitrateRange().getUpper()));
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+      int baselineLevel = 0;
       for (MediaCodecInfo.CodecProfileLevel profile : caps.profileLevels)
-        if (profile.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline) {
-          format.setInteger(MediaFormat.KEY_PROFILE, profile.profile);
-          break;
-        }
+        if (profile.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+          baselineLevel = Math.max(baselineLevel, profile.level);
+      if (baselineLevel != 0) {
+        format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
+        // Legacy OMX requires level with profile. Use the highest advertised level.
+        format.setInteger(MediaFormat.KEY_LEVEL, baselineLevel);
+      }
       return caps.isFormatSupported(format) ? format : null;
     } catch (IllegalArgumentException e) { return null; }
   }

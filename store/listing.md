@@ -1,4 +1,4 @@
-# Google Play listing DRAFT — offline candidate code 5
+# Google Play listing DRAFT — offline candidate code 6
 
 Publisher: Artomatica
 Package: app.stereobridge
@@ -19,12 +19,12 @@ Pair both transmitters in Android Bluetooth settings, open Stereo Bridge and tap
 
 Advanced controls include independent microphone meters, gain, mute and left/right channel swap. Camera and Nearby devices access on Android 12 or later enable capture. Android 10 and 11 use ordinary Bluetooth access. Phone Microphone, location and broad storage permissions are not requested.
 
-The candidate supports Android 10 or later, a camera and classic Bluetooth, with ARM 32-bit, ARM 64-bit and x86_64 builds. Physical microphone checks use Pixel 8 Pro and two original DJI Mic Mini transmitters. Broader devices and sustained capture remain subject to validation. DJI Mic Mini 2, DJI Mic and DJI Mic 2 are unsupported.
+The candidate supports Android 10 or later, a camera and classic Bluetooth, with ARM 32-bit, ARM 64-bit and x86_64 builds. Physical microphone checks use Pixel 6 / Android 15 and two original DJI Mic Mini transmitters. Broader devices and sustained capture remain subject to validation. DJI Mic Mini 2, DJI Mic and DJI Mic 2 are unsupported.
 
 No advertising, analytics or cloud upload. Completed videos stay on your phone and remain after uninstalling. Source and third-party licenses are public on GitHub. Stereo Bridge is independent and is not affiliated with or endorsed by DJI.
 
 ## App access for review DRAFT
-No login required. Use two original DJI Mic Mini transmitters paired in Android Bluetooth settings. Open app → Record → allow Camera and Nearby devices (Android 12+) → speak into each microphone → Stop → Open last video. Enable optional notifications to demonstrate background Stop. Background/sleep recording must be demonstrated. Current physical verification uses Pixel 8 Pro; no universal microphone compatibility claim.
+No login required. Use two original DJI Mic Mini transmitters paired in Android Bluetooth settings. Open app → Record → allow Camera and Nearby devices (Android 12+) → speak into each microphone → Stop → Open last video. Enable optional notifications to demonstrate background Stop. Background/sleep recording must be demonstrated. Current physical verification uses Pixel 6 / Android 15; no universal microphone compatibility claim.
 
 ## Data safety DRAFT
 No user data collected off-device or shared. Audio/video are processed and stored locally. Pending MediaStore videos and recovery metadata support finalization/retry. Microphone selections/settings and recovery metadata are deleted by clearing storage or uninstalling; completed videos can be deleted in a gallery/file manager. Verify final dependencies and declarations before submission.

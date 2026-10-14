@@ -6,7 +6,7 @@
 
 First use requires pairing both original DJI Mic Mini transmitters in Android Settings, then granting Camera and Nearby devices on Android 12+. Android 10/11 use the normal legacy Bluetooth permission. Notifications are optional. No Wi-Fi, receiver, root, Shizuku or debugging setup is required to record. Settings survive reboot; recording never starts automatically.
 
-## Compatible candidate: 0.2.0-offline-rc2 (code 5)
+## Current candidate: 0.2.0-offline-rc3 (code 6)
 
 - Android 10/API 29 minimum, target API 36. Native libraries: armeabi-v7a, arm64-v8a and x86_64.
 - Camera and paired-device Bluetooth access; optional notifications. No RECORD_AUDIO, Internet, location, device discovery or broad storage permission. Foreground service uses camera and connectedDevice types for Camera2 plus Bluetooth RFCOMM.
@@ -15,7 +15,7 @@ First use requires pairing both original DJI Mic Mini transmitters in Android Se
 - Permission-denial recovery, optional-notification capture, low-storage reserve, disconnect errors and repeated-session cleanup are covered by focused checks.
 - Independent spec and quality reviews found issues in descriptor lifetime, camera fallback, permission prompts and UI recovery; these were addressed. Final review and candidate-specific hardware checks are recorded separately from earlier releases.
 
-## Fresh local package checks
+## Local package checks (code 5; repeated build for code 6)
 
 106 unit tests passed with zero failures/errors. Release lint reported zero errors and nine warnings. Debug APK, signed release APK and signed AAB built successfully. APK signature, 16 KiB ZIP alignment and native LOAD alignment passed for all three ABIs. Bundled privacy text exactly matches PRIVACY.md. Final focused independent source review found no critical or important issues.
 
@@ -41,6 +41,10 @@ Code 5 candidate:
 
 Raw owner video/audio and diagnostic logs remain private and are not committed to the public repository.
 
+## Android 10 encoder regression and code 6
+
+The fresh API29 check on code 5 failed during AVC configuration. Android10 ACodec requires an AVC level whenever an explicit profile is set; code 5 supplied only profile. Code 6 supplies both advertised profile and level. Fresh hosted validation is required before this fix is called verified.
+
 ## Hosted emulator coverage
 
 API 31 x86_64 validation passed on earlier source `2fafcd6`: [Actions run 38435020995](https://github.com/w1ne/stereo-bridge/actions/runs/38435020995). Three synthetic takes covered repeat/background/sleep/reboot with Wi-Fi disabled and passed channel/timestamp/silence checks.
@@ -49,4 +53,4 @@ The current workflow targets API 29 to exercise the new minimum version; a fresh
 
 ## Distribution gate
 
-Build, unit-test, lint, signature and alignment results must be attached to the exact candidate. Update the public privacy page, store assets and camera/connectedDevice foreground-service declarations before submitting code 5. Google Play approval is not guaranteed. The prior 0.1 release submission is separate; no new submission or approval is asserted here.
+Build, unit-test, lint, signature and alignment results must be attached to the exact candidate. Update the public privacy page, store assets and camera/connectedDevice foreground-service declarations before submitting code 6. Code 5 was uploaded to a production draft but will be replaced by code 6 before submission. Google Play approval is not guaranteed. The prior 0.1 release submission is separate; no new submission or approval is asserted here.

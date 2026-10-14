@@ -1,43 +1,54 @@
+<p align="center"><img src="docs/site/assets/icon.png" width="88" alt="Stereo Bridge icon"></p>
+
 # Stereo Bridge
 
-**Two mics. One recording.** An open-source Android video recorder for two original DJI Mic Mini transmitters, without a receiver.
+**Two wireless mics. One stereo video. No receiver.**
 
-## Daily use
+An open-source Android recorder that connects directly to two original DJI Mic Mini transmitters and saves each microphone on its own audio channel alongside camera video.
 
-**Open Stereo Bridge and tap Record.** Tap **Stop** to save the stereo video to **Movies / Stereo Bridge**.
+[Get started](docs/usage.md) · [Compatibility](docs/compatibility.md) · [How it works](docs/architecture.md) · [Build](docs/build.md) · [Releases](https://github.com/w1ne/stereo-bridge/releases) · [Google Play](https://play.google.com/store/apps/details?id=app.stereobridge)
 
-First use only: pair both transmitters in Android Bluetooth settings and allow Camera and Nearby devices (Android 12+); recording notifications are optional. The app automatically selects exactly two paired original Mic Mini transmitters. If more are paired, choose left and right in Advanced controls. Turn on Bluetooth and both microphones before recording.
+## Why Stereo Bridge?
 
-Microphone assignments, gain, mute and channel swap are saved. Recording needs no Wi-Fi, Internet, computer, Developer options, wireless debugging, root or Shizuku. After a phone reboot, open the app and tap Record again. It never starts recording automatically.
+For interviews, conversations and two-person recordings, separate microphone channels let you adjust each voice independently in your editor. Stereo Bridge keeps the setup small: your phone and two transmitters. The app decodes audio locally and records video with its own camera screen.
 
-## Offline candidate status
+- **Separate voices:** one mic on the left channel, one on the right; independent meters, gain, mute and channel swap.
+- **One-button capture:** with both paired mics powered on, open the app and tap **Record**. Tap **Stop** to save to **Movies / Stereo Bridge**.
+- **Offline by design:** no account, ads, analytics, Internet permission, Wi-Fi or debugging setup.
+- **Ordinary permissions:** camera and paired Bluetooth access; recording notifications are optional.
+- **Open implementation:** inspect the Bluetooth driver, LC3 decoding and recording pipeline.
 
-This branch builds **0.2.0-offline-rc2**, a new architecture: Camera2 captures video inside Stereo Bridge; independent Bluetooth microphone capture feeds two-channel AAC; Android MediaMuxer saves an H.264/AAC MP4. The two selected microphones occupy left and right channels. Camera and encoder capabilities choose an available mode up to 1080p, preferring 30 fps. Startup can retry smaller modes or another camera. This candidate uses its own camera screen.
+## Get started
 
-The previous **0.1.0-rc3** stock-camera bridge remains available in [published releases](https://github.com/w1ne/stereo-bridge/releases). That older version requires wireless debugging and is a separate architecture. Pixel 6 / Android 15 has saved offline real-microphone stereo video and the owner confirmed clear speech. The earlier candidate completed one 15-minute take; another stopped and saved a partial take after a large audio sequence gap. The new permission/storage candidate is undergoing fresh tests and has not replaced the Google Play submission. See [offline verification](docs/offline-verification.md).
+1. Pair both original DJI Mic Mini transmitters in Android Bluetooth settings.
+2. Open Stereo Bridge and grant Camera and Nearby devices access (Android 12+).
+3. Tap **Record**, then **Stop**. Use **Open last video** to watch the saved take.
 
-Only original DJI Mic Mini transmitters are supported. Other phones, DJI generations and manufacturers need separate validation. Audio startup is aligned using driver timestamps; long-term independent microphone clock drift still requires hardware testing.
+Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and both transmitters powered on. Setup and controls survive phone reboots; recording starts only when you tap Record.
 
-## Compatibility and permissions
+## Release status
 
-Android 10+ (API29), with ARM32, ARM64 and x86-64 native builds. Camera and classic Bluetooth hardware are required; autofocus, a rear camera and a built-in microphone are optional. Only original DJI Mic Mini transmitters are supported; broader phone support is capability-based and must be validated on actual devices.
+**0.2.0-offline-rc3** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
 
-The app uses Camera and paired Bluetooth access. It does not request phone Microphone, Bluetooth discovery/location, broad storage, Internet, root or debugging access. Notifications are optional. Videos are written directly to pending MediaStore items; failed publication can be retried, and unfinished captures are checked after restart. Recording always starts only when you tap Record.
+The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update is being prepared for review; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
 
-## Build
+Physical microphone testing uses **Pixel 6 / Android 15** and **two original DJI Mic Mini transmitters**. Other phones require validation. DJI Mic, DJI Mic 2, Mic Mini 2 and other manufacturers are unsupported. See [compatibility and known limits](docs/compatibility.md).
 
-Use JDK 17, Android SDK 36, NDK 28.2.13676358 and CMake 3.22.1. Gradle 9.6.0 is pinned with a distribution checksum.
+## Repository map
 
-```sh
-./gradlew testDebugUnitTest lintRelease assembleDebug bundleRelease
-```
+| Path | Purpose |
+| --- | --- |
+| [`app/`](app/) | Android UI, recording service, microphone transport, native codec and unit tests |
+| [`docs/`](docs/README.md) | Usage, compatibility, architecture, build and verification guides |
+| [`scripts/`](scripts/) | Synthetic emulator capture and MP4 verification tools |
+| [`store/`](store/) | Play listing source and store assets |
+| [`.github/`](.github/) | Build/emulator CI, website deployment and issue templates |
+| [`docs/site/`](docs/site/) | Public product page and versioned privacy policies |
 
-Application ID: `app.stereobridge`; debug variant adds `.debug`. Release signing is optional for local builds. Set `STEREO_BRIDGE_SIGNING_PROPERTIES` to an external properties file containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword` to sign. Keep credentials outside this repository.
+## Contribute and support
 
-The release app has no Internet permission or ADB dependency. A debug-only synthetic audio source supports camera/encoder checks without physical microphones; it is disabled in release builds. Private recordings, lab logs, keys and local SDK settings are ignored.
+Start with [building the app](docs/build.md), [contributing](CONTRIBUTING.md), or [reporting a bug](https://github.com/w1ne/stereo-bridge/issues/new/choose). Include the app version, phone/Android version and microphone model. Keep personal recordings and full phone logs private.
 
-## Project
+[Privacy](PRIVACY.md) · [Security](SECURITY.md) · [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-[Privacy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Driver notes](docs/independent-driver-research.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
-
-Apache-2.0 application source; Google liblc3 retains its license. Independent project, not affiliated with or endorsed by DJI. Publisher: Artomatica. Support: andrii@shylenko.com.
+Apache-2.0 application source; Google liblc3 retains its license. Independent project, not affiliated with or endorsed by DJI. Published by Artomatica. Support: andrii@shylenko.com.
