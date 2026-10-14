@@ -1,4 +1,4 @@
-# Google Play listing DRAFT — offline candidate code 6
+# Google Play listing DRAFT — offline candidate code 7
 
 Publisher: Artomatica
 Package: app.stereobridge

@@ -10,7 +10,7 @@ android {
  compileSdk 36
  ndkVersion '28.2.13676358'
  externalNativeBuild { cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.22.1' } }
- defaultConfig { applicationId 'app.stereobridge'; minSdk 29; targetSdk 36; versionCode 6; versionName '0.2.0-offline-rc3'; ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64' } }
+ defaultConfig { applicationId 'app.stereobridge'; minSdk 29; targetSdk 36; versionCode 7; versionName '0.2.0-offline-rc4'; ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64' } }
  signingConfigs {
   if (signingPath) release { storeFile file(releaseKeys['storeFile']); storePassword releaseKeys['storePassword']; keyAlias releaseKeys['keyAlias']; keyPassword releaseKeys['keyPassword'] }
  }

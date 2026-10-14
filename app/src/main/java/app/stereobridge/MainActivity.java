@@ -18,6 +18,7 @@ public final class MainActivity extends Activity {
   private TextureView preview;
   private int transformedWidth=-1,transformedHeight=-1,bufferWidth=-1,bufferHeight=-1,bufferRotation=-1;
   private boolean transformedFront;
+  private int transformedDisplay = -1;
   private SurfaceTexture texture;
   private OfflineRecorderService.LocalBinder recorder, previewOwner;
   private boolean bound, resumed, pendingRecord, expanded, permissionRequestInFlight;
@@ -187,21 +188,12 @@ public final class MainActivity extends Activity {
     if (recorder != null) recorder.setDisplayRotation(displayDegrees);
     int[] info = recorder == null ? new int[] {1920, 1080, 90} : recorder.previewInfo();
     boolean front = info.length > 3 && info[3] == 1;
-    if (info.length > 4) info[2] = CameraGeometry.rotation(info[4], displayDegrees, front);
-    if(width==transformedWidth&&height==transformedHeight&&info[0]==bufferWidth&&info[1]==bufferHeight&&info[2]==bufferRotation&&front==transformedFront)return;
-    transformedFront=front;
-    transformedWidth=width;transformedHeight=height;bufferWidth=info[0];bufferHeight=info[1];bufferRotation=info[2];
-    float sw = info[0], sh = info[1];
-    double angle = Math.toRadians(info[2]);
-    float rotatedWidth = info[2] % 180 == 0 ? sw : sh, rotatedHeight = info[2] % 180 == 0 ? sh : sw;
-    float scale = Math.max(width / rotatedWidth, height / rotatedHeight);
-    float[] source = {0, 0, width, 0, width, height, 0, height}, target = new float[8];
-    float[] corners = {-sw / 2, -sh / 2, sw / 2, -sh / 2, sw / 2, sh / 2, -sw / 2, sh / 2};
-    for (int n = 0; n < 4; n++) {
-      float x = corners[n * 2], y = corners[n * 2 + 1];
-      target[n * 2] = width / 2f + (front ? -1 : 1) * scale * (float) (x * Math.cos(angle) - y * Math.sin(angle));
-      target[n * 2 + 1] = height / 2f + scale * (float) (x * Math.sin(angle) + y * Math.cos(angle));
-    }
+    int sensor = info.length > 4 ? info[4] : 90;
+    if(width==transformedWidth&&height==transformedHeight&&info[0]==bufferWidth&&info[1]==bufferHeight&&sensor==bufferRotation&&displayDegrees==transformedDisplay&&front==transformedFront)return;
+    transformedFront=front;transformedDisplay=displayDegrees;
+    transformedWidth=width;transformedHeight=height;bufferWidth=info[0];bufferHeight=info[1];bufferRotation=sensor;
+    float[] source = {0,0,width,0,width,height,0,height};
+    float[] target = CameraGeometry.previewCorners(width,height,info[0],info[1],sensor,displayDegrees);
     Matrix matrix = new Matrix();
     matrix.setPolyToPoly(source, 0, target, 0, 4);
     preview.setTransform(matrix);

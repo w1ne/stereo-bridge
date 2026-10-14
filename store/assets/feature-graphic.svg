@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+<rect width="1024" height="500" fill="#0c1118"/>
+<g font-family="Arial, sans-serif">
+<text x="64" y="77" font-size="22" font-weight="700" fill="#75e1c5">STEREO BRIDGE</text>
+<text x="64" y="181" font-size="62" font-weight="700" fill="#f1f5fa">Two mics.</text>
+<text x="64" y="255" font-size="62" font-weight="700" fill="#f1f5fa">One recording.</text>
+<text x="64" y="326" font-size="25" fill="#a5b2c4">Stereo video. No receiver.</text>
+<text x="64" y="366" font-size="21" fill="#a5b2c4">Two original DJI Mic Mini transmitters</text>
+<text x="64" y="437" font-size="21" fill="#75e1c5">Works offline · Android 10+</text>
+</g>
+<rect x="744" y="125" width="216" height="250" rx="36" fill="#162b36"/>
+<g fill="#75e1c5"><rect x="777" y="172" width="42" height="78" rx="21"/><path d="M765 222h12v17a21 21 0 0 0 42 0v-17h12v17a33 33 0 0 1-27 32v27h22v12h-56v-12h22v-27a33 33 0 0 1-27-32z"/></g>
+<g fill="#9dbaff"><rect x="873" y="172" width="42" height="78" rx="21"/><path d="M861 222h12v17a21 21 0 0 0 42 0v-17h12v17a33 33 0 0 1-27 32v27h22v12h-56v-12h22v-27a33 33 0 0 1-27-32z"/></g>
+</svg>

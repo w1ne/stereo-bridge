@@ -28,7 +28,7 @@ Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and b
 
 ## Release status
 
-**0.2.0-offline-rc3** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
+**0.2.0-offline-rc4** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
 
 The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update is being prepared for review; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
 
