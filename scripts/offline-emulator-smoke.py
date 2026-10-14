@@ -99,7 +99,7 @@ def take(name, background=False):
 def run():
     adb('shell', 'svc', 'wifi', 'disable')
     adb('shell', 'settings', 'put', 'global', 'mobile_data', '0')
-    for permission in ['CAMERA', 'RECORD_AUDIO', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS']:
+    for permission in ['CAMERA', 'BLUETOOTH_CONNECT', 'POST_NOTIFICATIONS']:
         adb('shell', 'pm', 'grant', pkg, 'android.permission.' + permission, check=False)
     adb('logcat', '-c')
     launch()

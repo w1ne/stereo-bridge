@@ -2,11 +2,13 @@ package app.stereobridge;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.os.SystemClock;
 import android.view.Surface;
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
@@ -15,6 +17,7 @@ import java.util.ArrayDeque;
 public final class OfflineVideoEncoder {
   private static final int MAX_PCM = 2 * 1024 * 1024;
   private static final int MAX_ENCODED = 8 * 1024 * 1024;
+  private final EncoderReleaseBarrier releaseBarrier = new EncoderReleaseBarrier();
   private MediaCodec video, audio;
   private MediaMuxer muxer;
   private Surface surface;
@@ -31,29 +34,100 @@ public final class OfflineVideoEncoder {
   private int videoSamples, audioSamples;
 
   public OfflineVideoEncoder(File output, int width, int height, int rotation) throws IOException {
+    this(output, width, height, rotation, 30);
+  }
+
+  public OfflineVideoEncoder(File output, int width, int height, int rotation, int rate) throws IOException {
+    this(output.getAbsolutePath(), null, width, height, rotation, rate);
+  }
+
+  public OfflineVideoEncoder(FileDescriptor output, int width, int height, int rotation, int rate) throws IOException {
+    this(null, java.util.Objects.requireNonNull(output), width, height, rotation, rate);
+  }
+
+  private OfflineVideoEncoder(String path, FileDescriptor descriptor, int width, int height, int rotation, int rate) throws IOException {
     try {
-      MediaFormat vf = MediaFormat.createVideoFormat("video/avc", width, height);
-      vf.setInteger(
-          MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-      vf.setInteger(MediaFormat.KEY_BIT_RATE, 8_000_000);
-      vf.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
-      vf.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-      vf.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-      video = MediaCodec.createEncoderByType("video/avc");
-      video.configure(vf, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+      video = configuredVideo(width, height, rate);
       surface = video.createInputSurface();
-      MediaFormat af = MediaFormat.createAudioFormat("audio/mp4a-latm", 48000, 2);
-      af.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-      af.setInteger(MediaFormat.KEY_BIT_RATE, 192000);
-      af.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384);
-      audio = MediaCodec.createEncoderByType("audio/mp4a-latm");
-      audio.configure(af, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-      muxer = new MediaMuxer(output.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+      audio = configuredAudio();
+      muxer = descriptor == null
+          ? new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+          : new MediaMuxer(descriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
       muxer.setOrientationHint(rotation);
     } catch (Throwable e) {
       release();
       throw new IOException("Cannot initialize video/audio encoder", e);
     }
+  }
+
+  /** Select an encoder for this exact surface format, including advertised rate limits. */
+  static MediaFormat videoFormat(MediaCodecInfo info, int width, int height, int requestedFps) {
+    try {
+      MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType("video/avc");
+      boolean surface = false;
+      for (int color : caps.colorFormats)
+        if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) surface = true;
+      if (!surface) return null;
+      MediaCodecInfo.VideoCapabilities v = caps.getVideoCapabilities();
+      if (!v.isSizeSupported(width, height)) return null;
+      android.util.Range<Double> rates = v.getSupportedFrameRatesFor(width, height);
+      int rate = VideoCapabilityPolicy.rate(requestedFps,rates.getLower(),rates.getUpper());
+      // Camera and encoder must agree on the same rate. A smaller camera candidate can retry.
+      if (rate != requestedFps) return null;
+      MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
+      format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+      format.setInteger(MediaFormat.KEY_FRAME_RATE, rate);
+      format.setInteger(MediaFormat.KEY_BIT_RATE, VideoCapabilityPolicy.bitrate(width,height,rate,v.getBitrateRange().getLower(),v.getBitrateRange().getUpper()));
+      format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+      for (MediaCodecInfo.CodecProfileLevel profile : caps.profileLevels)
+        if (profile.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline) {
+          format.setInteger(MediaFormat.KEY_PROFILE, profile.profile);
+          break;
+        }
+      return caps.isFormatSupported(format) ? format : null;
+    } catch (IllegalArgumentException e) { return null; }
+  }
+
+  static boolean supportsVideo(int width, int height, int rate) {
+    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
+      if (info.isEncoder() && videoFormat(info, width, height, rate) != null) return true;
+    return false;
+  }
+
+  private static MediaCodec configuredVideo(int width, int height, int rate) throws IOException {
+    Throwable last = null;
+    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+      if (!info.isEncoder()) continue;
+      MediaFormat format = videoFormat(info, width, height, rate);
+      if (format == null) continue;
+      MediaCodec codec = null;
+      try {
+        codec = MediaCodec.createByCodecName(info.getName());
+        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        return codec;
+      } catch (Exception e) { last = e; if (codec != null) codec.release(); }
+    }
+    throw new IOException("No compatible AVC surface encoder", last);
+  }
+
+  private static MediaCodec configuredAudio() throws IOException {
+    Throwable last = null;
+    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+      if (!info.isEncoder()) continue;
+      MediaCodec codec = null;
+      try {
+        MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType("audio/mp4a-latm");
+        MediaFormat format = MediaFormat.createAudioFormat("audio/mp4a-latm",48000,2);
+        format.setInteger(MediaFormat.KEY_AAC_PROFILE,MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+        format.setInteger(MediaFormat.KEY_BIT_RATE,caps.getAudioCapabilities().getBitrateRange().clamp(192000));
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,16384);
+        if (!caps.isFormatSupported(format)) continue;
+        codec = MediaCodec.createByCodecName(info.getName());
+        codec.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);
+        return codec;
+      } catch (Exception e) { last=e; if (codec != null) codec.release(); }
+    }
+    throw new IOException("No compatible stereo AAC encoder",last);
   }
 
   public Surface videoSurface() {
@@ -227,7 +301,15 @@ public final class OfflineVideoEncoder {
     }
   }
 
-  private synchronized void release() {
+  public boolean isReleased() { return releaseBarrier.isReleased(); }
+  public void awaitRelease() throws InterruptedException { releaseBarrier.await(); }
+
+  private void release() {
+    try { releaseResources(); }
+    finally { releaseBarrier.markReleased(); }
+  }
+
+  private synchronized void releaseResources() {
     if (muxer != null) {
       try {
         if (muxStarted) muxer.stop();

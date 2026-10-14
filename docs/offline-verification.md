@@ -1,60 +1,52 @@
-# Offline recorder candidate — updated 14 October 2026
+# Offline recorder verification — 14 October 2026
 
-## Architecture and daily use
+## Daily use
 
-Camera2 and MediaCodec run inside Stereo Bridge. Two independent DJI Mic Mini Bluetooth streams are decoded, mixed as left/right PCM and encoded to stereo AAC. Camera frames are encoded to H.264. MediaMuxer publishes MP4 videos to Movies / Stereo Bridge.
+**With both paired microphones powered on and Bluetooth enabled, open Stereo Bridge and tap Record. Tap Stop to save to Movies / Stereo Bridge.**
 
-**Daily use: open Stereo Bridge and tap Record. Tap Stop to save.**
+First use requires pairing both original DJI Mic Mini transmitters in Android Settings, then granting Camera and Nearby devices on Android 12+. Android 10/11 use the normal legacy Bluetooth permission. Notifications are optional. No Wi-Fi, receiver, root, Shizuku or debugging setup is required to record. Settings survive reboot; recording never starts automatically.
 
-First use only: pair both original DJI Mic Mini transmitters in Android Settings and allow camera, microphone and nearby devices access. The two transmitters need power and Bluetooth enabled. There is no receiver or cable during recording. Saved device assignments and controls are restored after reboot; recording itself never starts automatically.
+## Compatible candidate: 0.2.0-offline-rc2 (code 5)
 
-## Local checks
+- Android 10/API 29 minimum, target API 36. Native libraries: armeabi-v7a, arm64-v8a and x86_64.
+- Camera and paired-device Bluetooth access; optional notifications. No RECORD_AUDIO, Internet, location, device discovery or broad storage permission. Foreground service uses camera and connectedDevice types for Camera2 plus Bluetooth RFCOMM.
+- Camera/codec capability negotiation, bounded startup fallback, display-aware preview and frozen capture orientation.
+- Direct pending MediaStore recording avoids copying an entire video at Save. Journal, ownership checks and bounded MP4 inspection recover retained captures safely. Finalized videos are retained if publication fails; Retry save is available.
+- Permission-denial recovery, optional-notification capture, low-storage reserve, disconnect errors and repeated-session cleanup are covered by focused checks.
+- Independent spec and quality reviews found issues in descriptor lifetime, camera fallback, permission prompts and UI recovery; these were addressed. Final review and candidate-specific hardware checks are recorded separately from earlier releases.
 
-- Debug APK, signed release APK and signed release AAB build with JDK 17 / SDK 36.
-- All 61 unit tests pass (zero failures/errors). Tests cover parser/buffer behavior, stereo mixing, sample timestamps, AAC input batching, bounded mux buffering, video timestamp mapping and session state restoration.
-- Release lint has zero errors; warnings include English-only UI, pinned toolchain versions and arm64-only support.
-- Release manifest has no Internet permission, debugging setup, boot receiver or exported recording service.
-- LibADB, SPAKE2, Conscrypt and Bouncy Castle are absent from runtime dependencies.
-- APK v2 signature and 16 KB ZIP alignment checks pass.
-- Independent source reviews led to fixes for cancellation, MediaStore cleanup, preview destruction, pending Camera2 session ownership and waiting for camera closure before encoder finalization.
+## Fresh local package checks
 
-## Emulator harness
+106 unit tests passed with zero failures/errors. Release lint reported zero errors and nine warnings. Debug APK, signed release APK and signed AAB built successfully. APK signature, 16 KiB ZIP alignment and native LOAD alignment passed for all three ABIs. Bundled privacy text exactly matches PRIVACY.md. Final focused independent source review found no critical or important issues.
 
-`scripts/offline-emulator-smoke.py` is restricted to emulator serials. Install the debug APK and run:
+## Physical Pixel 6 / Android 15
 
-```sh
-python3 scripts/offline-emulator-smoke.py --serial emulator-5554 --output /private/tmp/stereo-offline-smoke
-```
+Wi-Fi and wireless debugging were disabled during recording checks. The development USB connection is only used for installation and observation.
 
-It disables Wi-Fi, records debug-only 440 Hz left / 880 Hz right tones through the real camera/encoder path, repeats with background and screen sleep, reboots, records again and pulls the saved videos. Release builds disable synthetic input.
+Earlier code 4 offline candidate:
 
-The Mac could not boot the API 31 arm64 emulator because its disk requirements exceeded available space; those temporary packages were removed. Hosted API 31 x86_64 emulator validation **passed** on source commit `2fafcd6` in [GitHub Actions run 38435020995](https://github.com/w1ne/stereo-bridge/actions/runs/38435020995):
+- Synthetic camera recordings: 11.36 seconds, 91.74 seconds through Home/screen sleep/PIN lock, and 11.23 seconds after reboot and ordinary owner unlock. All passed distinct 440 Hz left / 880 Hz right, monotonic timestamps and no silent 100 ms audio windows.
+- Real microphones: 151.34-second stereo take; Bluetooth loss saved a playable 8.93-second partial take; reconnect saved a playable 12.30-second take. Full decode passed.
+- Owner confirmed clear speech in the 110.56-second prompted take: “works great!”
+- A 931.31-second real-microphone take passed full decode. Audio duration was 931.2213 seconds and video duration 931.3078 seconds.
+- A separate endurance attempt stopped after 375.49 seconds on a large sequence discontinuity and saved a playable partial take. Its cause is unclassified. Protective stop-and-save remains; this is not claimed fixed by the passing take.
 
-- Three takes saved successfully, including repeat recording across background/screen sleep and another take after reboot with Wi-Fi disabled.
-- The last saved video URI restored after reboot without setup.
-- All three MP4s contain 1280×720 H.264 video and 48 kHz two-channel AAC audio.
-- Distinct 440 Hz left / 880 Hz right tones, monotonic track timestamps and no silent 100 ms audio windows passed for each take.
-- Evidence artifact contains screenshots, logcat, the videos and `media-verification.json`.
+Code 5 candidate:
 
-Earlier hosted runs exposed AAC input batching and camera session/device shutdown bugs; both were fixed before this passing run. Harness fixes wait for shared storage after reboot and tolerate UI automation exit errors when a valid fresh snapshot exists. The signed candidate uses the same application source as the passing run (application last changed at `ad5c87f`; subsequent commits change only the harness).
+- Two short real-microphone recordings saved directly to MediaStore and repeated successfully after removal of phone microphone permission.
+- Debug camera pipeline saved with notification permission denied.
+- Process termination during capture followed by restart cleaned the known unusable owned pending row; the next capture saved.
+- Camera denial displayed Settings recovery, and restoring permission allowed the next capture to save.
+- Latest final real-microphone validation is pending: both transmitters showed 10% battery and the right transmitter disconnected before capture. Charge both before retrying. Earlier code 4 endurance results do not establish final code 5 endurance.
 
-Synthetic emulator testing cannot establish physical Bluetooth reconnect reliability, microphone intelligibility or long-term microphone clock drift.
+Raw owner video/audio and diagnostic logs remain private and are not committed to the public repository.
 
-## Physical Pixel checks — in progress
+## Hosted emulator coverage
 
-A USB-connected **Pixel 6 / Android 15** identified as `oriole` (the expected Pixel 8 Pro was not connected). The signed release APK installed successfully. Camera preview and normal first-use Camera, Microphone, Nearby devices and notification permission dialogs worked. With only one original DJI transmitter paired, Record correctly opened the two-microphone pairing guide.
+API 31 x86_64 validation passed on earlier source `2fafcd6`: [Actions run 38435020995](https://github.com/w1ne/stereo-bridge/actions/runs/38435020995). Three synthetic takes covered repeat/background/sleep/reboot with Wi-Fi disabled and passed channel/timestamp/silence checks.
 
-A separate debug package exercised the same camera/encoder implementation with synthetic tones. With Wi-Fi disabled and wireless debugging off, it saved:
+The current workflow targets API 29 to exercise the new minimum version; a fresh candidate run is required after publication. Synthetic testing cannot prove Bluetooth microphone intelligibility, physical clock drift or device-wide compatibility. The local Mac emulator could not boot within available disk space; temporary packages were removed.
 
-- 11.36-second 1920×1080 H.264 / 48 kHz stereo AAC take.
-- 91.74-second repeated take spanning Home, screen sleep and PIN lock. Stop was sent through the debug app's existing Stop action while locked; the saved file remained playable. Video continued, with a largest frame timestamp gap of 0.278 seconds across this take.
+## Distribution gate
 
-Both files passed distinct left/right tones, monotonic track timestamps and no silent 100 ms audio windows. These are test tones, **not microphone captures**. The phone was then rebooted; post-reboot interaction is awaiting the owner's PIN unlock.
-
-Still required: post-reboot saved-settings/recording check, physical two-mic startup and speech/channel assignment, microphone disconnect, a longer real-microphone take, and reconnection with Wi-Fi/wireless debugging disabled. Driver timestamps are host estimates; long-term clock drift and Bluetooth scheduling remain hardware-dependent.
-
-For installation/testing: **plug the Pixel 8 Pro into the Mac with a USB-C data cable. Keep both DJI transmitters wireless. One user step: unlock the Pixel and accept “Allow USB debugging” if Android shows it.** This development connection is not a recording requirement.
-
-## Distribution
-
-The previous 0.1.0-rc3 release and its Google Play submission remain separate. Do not replace that submission until physical offline-candidate validation passes. The listing, screenshots, reviewer demonstration and foreground-service declaration must be updated for the built-in camera architecture before submitting 0.2.0.
+Build, unit-test, lint, signature and alignment results must be attached to the exact candidate. Update the public privacy page, store assets and camera/connectedDevice foreground-service declarations before submitting code 5. Google Play approval is not guaranteed. The prior 0.1 release submission is separate; no new submission or approval is asserted here.

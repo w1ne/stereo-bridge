@@ -62,4 +62,14 @@ public class OfflineSessionStateTest {
     s.restoreLast("content://old");
     assertEquals("content://new", s.savedUri());
   }
+  @Test
+  public void recoveryRemembersVideoWithoutChangingActiveStartup() {
+    OfflineSessionState s = new OfflineSessionState();
+    s.restoreLast("content://old");
+    s.begin();
+    s.rememberSaved("content://recovered");
+    assertEquals("content://recovered", s.savedUri());
+    assertEquals(OfflineSessionState.Phase.CONNECTING, s.phase());
+    assertTrue(s.busy());
+  }
 }

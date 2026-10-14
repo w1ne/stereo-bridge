@@ -64,6 +64,10 @@ final class OfflineSessionState {
     return savedUri;
   }
 
+  synchronized void rememberSaved(String uri) {
+    savedUri = uri;
+  }
+
   synchronized void restoreLast(String uri) {
     if (savedUri.isEmpty()) savedUri = uri;
   }

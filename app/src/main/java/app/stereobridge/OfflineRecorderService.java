@@ -11,12 +11,10 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.MediaCodec;
 import android.net.Uri;
 import android.os.*;
-import android.provider.MediaStore;
 import android.util.*;
 import android.view.Surface;
 import app.stereobridge.mic.*;
 import java.io.*;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,10 +22,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Owns camera and direct microphone inputs. No privileged routing or network access. */
 public final class OfflineRecorderService extends Service {
   public static final String START = "app.stereobridge.RECORD",
-      STOP = "app.stereobridge.STOP_RECORDING";
+      STOP = "app.stereobridge.STOP_RECORDING",
+      RECOVER = "app.stereobridge.RECOVER_VIDEO";
   static final OfflineSessionState state = new OfflineSessionState();
   static volatile int leftLevel, rightLevel;
   static volatile long startedAt, drops;
+  static volatile boolean needsRecovery;
   private final LocalBinder binder = new LocalBinder();
   private final AtomicBoolean active = new AtomicBoolean();
   private final TimedAudioFrameBuffer left = new TimedAudioFrameBuffer(),
@@ -142,6 +142,11 @@ public final class OfflineRecorderService extends Service {
         && sessionUses == 0) cameraThread.quitSafely();
   }
 
+  private volatile boolean preparingCamera;
+  private volatile String startupCameraFailure;
+  private final Set<String> rejectedModes = new HashSet<>();
+  private String selectedMode;
+
   private boolean realtimeSensor;
   private OfflineVideoEncoder encoder;
   private volatile Thread worker;
@@ -150,11 +155,16 @@ public final class OfflineRecorderService extends Service {
   private String cameraId;
   private volatile Size size;
   private volatile int rotation;
+  private volatile int displayDegrees;
+  private int sensorOrientation = 90;
+  private boolean frontFacing;
+  private int frameRate = 30;
   private Range<Integer> fps;
   private boolean opening;
   private int configuration;
   private PowerManager.WakeLock wakeLock;
   private BridgeSettings settings;
+  private RecordingStore recordingStore;
   private volatile boolean synthetic;
   private volatile boolean destroyed;
 
@@ -162,8 +172,12 @@ public final class OfflineRecorderService extends Service {
     public int[] previewInfo() {
       Size current = size;
       return current == null
-          ? new int[] {1920, 1080, 90}
-          : new int[] {current.getWidth(), current.getHeight(), rotation};
+          ? new int[] {1920, 1080, 90, 0, 90}
+          : new int[] {current.getWidth(), current.getHeight(), CameraGeometry.rotation(sensorOrientation, displayDegrees, frontFacing), frontFacing ? 1 : 0, sensorOrientation};
+    }
+
+    public void setDisplayRotation(int degrees) {
+      displayDegrees = Math.floorMod(degrees, 360);
     }
 
     public void attachPreview(SurfaceTexture texture) {
@@ -222,6 +236,8 @@ public final class OfflineRecorderService extends Service {
     super.onCreate();
     main = new Handler(Looper.getMainLooper());
     settings = new BridgeSettings(this);
+    recordingStore = new RecordingStore(this);
+    needsRecovery = recordingStore.hasPending();
     state.restoreLast(settings.get("last_video_uri", ""));
     cameraThread = new HandlerThread("offline-camera");
     cameraThread.start();
@@ -230,10 +246,15 @@ public final class OfflineRecorderService extends Service {
     nm.createNotificationChannel(
         new NotificationChannel(
             "recording", "Video recording", NotificationManager.IMPORTANCE_LOW));
+    if (needsRecovery) startRecovery();
   }
 
   @Override
   public int onStartCommand(Intent intent, int flags, int id) {
+    if (intent != null && RECOVER.equals(intent.getAction())) {
+      if (worker == null) startRecovery();
+      return START_NOT_STICKY;
+    }
     if (intent == null || STOP.equals(intent.getAction())) {
       stopRecording();
       return START_NOT_STICKY;
@@ -247,19 +268,13 @@ public final class OfflineRecorderService extends Service {
     right.clear();
     synthetic = BuildConfig.DEBUG && intent.getBooleanExtra("synthetic", false);
     try {
-      for (String p :
-          new String[] {
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.BLUETOOTH_CONNECT
-          })
-        if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED)
-          throw new SecurityException("Allow camera, microphone and nearby devices access first.");
-      startForeground(
-          11,
-          notification("Connecting microphones…"),
-          android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-              | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+      if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+          || (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED))
+        throw new SecurityException("Allow camera and nearby devices access first.");
+      int foregroundTypes = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
+      if (Build.VERSION.SDK_INT >= 30)
+        foregroundTypes |= android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+      startForeground(11, notification("Connecting microphones…"), foregroundTypes);
       active.set(true);
       wakeLock =
           getSystemService(PowerManager.class)
@@ -277,10 +292,18 @@ public final class OfflineRecorderService extends Service {
   }
 
   private void record() {
-    File take = null;
+    RecordingStore.Capture take = null;
     boolean videoStarted = false;
     OfflineVideoEncoder current = null;
+    Uri savedOutput = null;
+    ScheduledExecutorService storageMonitor = null;
     try {
+      Uri recovered = recordingStore.recover();
+      if (recovered != null) state.rememberSaved(recovered.toString());
+      needsRecovery = recordingStore.hasPending();
+      if (needsRecovery) throw new IOException("An earlier video is retained. Retry saving it before recording.");
+      if (RecordingSpacePolicy.low(availableStorageBytes()))
+        throw new IOException("Not enough storage. Free at least 64 MB before recording.");
       connectMicrophones();
       TimedAudioFrameBuffer.Frame firstLeft = left.poll(20, TimeUnit.SECONDS),
           firstRight = right.poll(20, TimeUnit.SECONDS);
@@ -289,31 +312,64 @@ public final class OfflineRecorderService extends Service {
         throw new IOException(
             "Both microphones must send audio before recording. Check power and Bluetooth"
                 + " pairing.");
-      CountDownLatch prepared = new CountDownLatch(1);
-      cameraReady = prepared;
-      cameraHandler.post(this::ensureCamera);
-      if (!prepared.await(8, TimeUnit.SECONDS))
-        throw new IOException(
-            "Camera did not become ready. Close other camera apps and try again.");
-      checkActive();
-      if (failure != null) throw new IOException(failure);
-      File directory = new File(getFilesDir(), "takes");
-      if (!directory.isDirectory() && !directory.mkdirs())
-        throw new IOException("Could not create recording storage.");
-      take = File.createTempFile("take-", ".mp4", directory);
-      current = new OfflineVideoEncoder(take, size.getWidth(), size.getHeight(), rotation);
-      long epoch = SystemClock.elapsedRealtimeNanos();
-      current.start(epoch);
-      synchronized (this) {
-        checkActive();
-        encoder = current;
+      long epoch = 0;
+      preparingCamera = true;
+      rejectedModes.clear();
+      int captureDisplayDegrees = displayDegrees;
+      for (int attempt = 0; attempt < StartupRetryPolicy.MAX_ATTEMPTS; attempt++) {
+        startupCameraFailure = null;
+        try {
+          drainCameraForRetry();
+          CountDownLatch prepared = new CountDownLatch(1);
+          cameraReady = prepared;
+          cameraHandler.post(() -> {
+            cameraId = null;
+            ensureCamera();
+          });
+          if (!prepared.await(8, TimeUnit.SECONDS)) throw new IOException("Camera did not become ready.");
+          checkActive();
+          if (startupCameraFailure != null) throw new IOException(startupCameraFailure);
+          take = recordingStore.begin();
+          rotation = CameraGeometry.rotation(sensorOrientation, captureDisplayDegrees, frontFacing);
+          current = new OfflineVideoEncoder(take.descriptor.getFileDescriptor(), size.getWidth(), size.getHeight(), rotation, frameRate);
+          epoch = SystemClock.elapsedRealtimeNanos();
+          current.start(epoch);
+          synchronized (this) { checkActive(); encoder = current; }
+          CountDownLatch firstVideo = new CountDownLatch(1);
+          cameraReady = firstVideo;
+          cameraHandler.post(this::configure);
+          if (!firstVideo.await(8, TimeUnit.SECONDS)) throw new IOException("Camera did not start video.");
+          checkActive();
+          if (startupCameraFailure != null) throw new IOException(startupCameraFailure);
+          break;
+        } catch (IOException startup) {
+          checkActive();
+          // Stop camera production before releasing its encoder surface or storage FD.
+          drainCameraForRetry();
+          if (current != null) {
+            current.abort();
+            if (!current.isReleased()) throw new IOException("Video encoder is still closing.", startup);
+          }
+          if (take != null) {
+            take.close();
+            recordingStore.recover();
+            if (recordingStore.hasPending()) throw new IOException("Failed startup video retained for recovery.",startup);
+          }
+          current = null;
+          take = null;
+          if (selectedMode == null) throw startup;
+          rejectedModes.add(selectedMode);
+          if (!StartupRetryPolicy.canRetry(preparingCamera,true,true,attempt+1)) throw startup;
+          android.util.Log.w("StereoRecorder","Retrying another camera video mode",startup);
+        }
       }
-      CountDownLatch firstVideo = new CountDownLatch(1);
-      cameraReady = firstVideo;
-      cameraHandler.post(this::configure);
-      if (!firstVideo.await(8, TimeUnit.SECONDS))
-        throw new IOException("Camera did not start video. Nothing has been saved.");
+      preparingCamera = false;
       checkActive();
+      if (startupCameraFailure != null) throw new IOException(startupCameraFailure);
+      final java.util.concurrent.atomic.AtomicLong availableSpace =
+          new java.util.concurrent.atomic.AtomicLong(availableStorageBytes());
+      if (RecordingSpacePolicy.low(availableSpace.get()))
+        throw new IOException("Not enough storage. Free at least 64 MB before recording.");
       left.beginLive();
       right.beginLive();
       TimedAudioFrameBuffer.Frame lf = left.poll(1, TimeUnit.SECONDS),
@@ -337,8 +393,20 @@ public final class OfflineRecorderService extends Service {
       videoStarted = true;
       getSystemService(NotificationManager.class)
           .notify(11, notification("Recording video · stereo microphones"));
+      final Thread storageSession = Thread.currentThread();
+      storageMonitor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "recording-storage"); t.setDaemon(true); return t;
+      });
+      storageMonitor.scheduleWithFixedDelay(() -> {
+        long available = availableStorageBytes();
+        if (active.get() && worker == storageSession) availableSpace.set(available);
+      }, 5, 5, TimeUnit.SECONDS);
       while (active.get()) {
         checkActive();
+        if (RecordingSpacePolicy.low(availableSpace.get())) {
+          failure = "Storage is almost full. Free space before recording again.";
+          break;
+        }
         if (lf == null || rf == null)
           throw new IOException(
               "Microphone audio stopped. Check both transmitters; recording has stopped.");
@@ -366,7 +434,10 @@ public final class OfflineRecorderService extends Service {
       active.set(false);
     } finally {
       Thread.interrupted();
+      preparingCamera = false;
       active.set(false);
+      if (storageMonitor != null) storageMonitor.shutdownNow();
+      if (videoStarted) state.saving();
       closeMicrophones();
       CountDownLatch closed = new CountDownLatch(1);
       cameraHandler.post(
@@ -387,9 +458,9 @@ public final class OfflineRecorderService extends Service {
           if (videoStarted) {
             state.saving();
             current.finish();
-            Uri uri = publish(take);
-            settings.set("last_video_uri", uri.toString());
-            state.saved(uri.toString());
+            take.close();
+            Uri uri = recordingStore.finishAndPublish(take);
+            savedOutput = uri;
             saved = true;
           } else current.abort();
         } catch (Exception e) {
@@ -397,10 +468,26 @@ public final class OfflineRecorderService extends Service {
           if (failure == null) failure = "Could not save video: " + message(e);
         }
       }
-      if (saved && take != null && !take.delete())
-        android.util.Log.w("StereoRecorder", "Temporary take retained after publication");
-      if (failure != null) state.fail((saved ? "Partial video saved. " : "") + failure);
-      else if (!saved) state.idle();
+      if (take != null && !saved && current != null && !current.isReleased()) {
+        deferRecovery(current, take);
+        if (failure == null) failure = "Video is still closing. It is retained for recovery.";
+      } else if (take != null && !saved) {
+        try {
+          take.close();
+          Uri recovered = recordingStore.recover();
+          if (recovered != null) {
+            savedOutput = recovered;
+            saved = true;
+          }
+        } catch (Exception recovery) {
+          if (failure == null) failure = "Video retained. Tap Retry save when storage is available.";
+          android.util.Log.w("StereoRecorder", "Video recovery deferred", recovery);
+        }
+      }
+      needsRecovery = recordingStore.hasPending();
+      if (needsRecovery && failure != null) failure += " Video retained; tap Retry save.";
+      final Uri completedOutput = savedOutput;
+      final String completedFailure = failure == null ? null : (saved ? "Partial video saved. " : "") + failure;
       leftLevel = rightLevel = 0;
       if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
       wakeLock = null;
@@ -408,13 +495,33 @@ public final class OfflineRecorderService extends Service {
           () -> {
             stopForeground(STOP_FOREGROUND_REMOVE);
             worker = null;
-            if (failure != null) notifyFailure();
+            if (completedOutput != null) state.rememberSaved(completedOutput.toString());
+            if (completedFailure != null) state.fail(completedFailure);
+            else if (completedOutput != null) state.saved(completedOutput.toString());
+            else state.idle();
+            if (completedFailure != null) notifyFailure();
             if (destroyed) {
               cameraHandler.post(this::maybeQuitCameraThread);
             } else if (preview != null) cameraHandler.post(this::ensureCamera);
             stopSelf();
           });
     }
+  }
+
+  private void drainCameraForRetry() throws IOException, InterruptedException {
+    CountDownLatch closed = new CountDownLatch(1);
+    cameraHandler.post(() -> {
+      cameraCleanup = closed;
+      encoder = null;
+      closeCamera();
+      completeCameraCleanup();
+    });
+    if (!closed.await(5,TimeUnit.SECONDS)) throw new IOException("Camera cleanup timed out; retry is unsafe.");
+  }
+
+  private long availableStorageBytes() {
+    try { return new StatFs(Environment.getExternalStorageDirectory().getAbsolutePath()).getAvailableBytes(); }
+    catch (RuntimeException unknown) { return -1; }
   }
 
   private void checkActive() {
@@ -426,7 +533,7 @@ public final class OfflineRecorderService extends Service {
       startSynthetic();
       return;
     }
-    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
         != PackageManager.PERMISSION_GRANTED)
       throw new SecurityException("Allow nearby devices access.");
     BluetoothManager manager = getSystemService(BluetoothManager.class);
@@ -458,6 +565,7 @@ public final class OfflineRecorderService extends Service {
 
             public void onStatus(String status) {
               if (active.get() && status.startsWith("Sequence discontinuity")) {
+                android.util.Log.w("StereoRecorder", (isLeft ? "Left " : "Right ") + status);
                 failure =
                     (isLeft ? "Left" : "Right")
                         + " microphone lost a block of audio. Recording stopped to preserve"
@@ -468,7 +576,9 @@ public final class OfflineRecorderService extends Service {
 
             public void onError(Exception e) {
               if (active.get()) {
-                failure = (isLeft ? "Left" : "Right") + " microphone disconnected: " + message(e);
+                android.util.Log.w("StereoRecorder", (isLeft ? "Left" : "Right") + " microphone disconnected", e);
+                failure = (isLeft ? "Left" : "Right")
+                    + " microphone disconnected. Check power and Bluetooth, then tap Record.";
                 stopRecording();
               }
             }
@@ -595,45 +705,66 @@ public final class OfflineRecorderService extends Service {
   }
 
   private void chooseCamera(CameraManager manager) throws CameraAccessException, IOException {
-    cameraId = null;
-    for (String id : manager.getCameraIdList()) {
-      CameraCharacteristics c = manager.getCameraCharacteristics(id);
-      if (cameraId == null) cameraId = id;
-      if (Objects.equals(
-          c.get(CameraCharacteristics.LENS_FACING), CameraCharacteristics.LENS_FACING_BACK)) {
-        cameraId = id;
-        break;
+    if (cameraId != null && (camera != null || opening)) return;
+    List<String> ids = new ArrayList<>(Arrays.asList(manager.getCameraIdList()));
+    ids.sort((a, b) -> {
+      try {
+        Integer fa = manager.getCameraCharacteristics(a).get(CameraCharacteristics.LENS_FACING);
+        Integer fb = manager.getCameraCharacteristics(b).get(CameraCharacteristics.LENS_FACING);
+        return Integer.compare(Objects.equals(fa, CameraCharacteristics.LENS_FACING_BACK) ? 0 : 1,
+            Objects.equals(fb, CameraCharacteristics.LENS_FACING_BACK) ? 0 : 1);
+      } catch (CameraAccessException e) { return 0; }
+    });
+    selectedMode = null;
+    for (String id : ids) {
+      int eligibleModes = 0;
+      long previousArea = Long.MAX_VALUE;
+      CameraCharacteristics c;
+      try { c = manager.getCameraCharacteristics(id); } catch (CameraAccessException e) { continue; }
+      StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+      if (map == null) continue;
+      Size[] choices = map.getOutputSizes(MediaCodec.class);
+      Size[] previews = map.getOutputSizes(SurfaceTexture.class);
+      if (choices == null || previews == null) continue;
+      Arrays.sort(choices, (a,b) -> Long.compare((long)b.getWidth()*b.getHeight(), (long)a.getWidth()*a.getHeight()));
+      Range<Integer>[] ranges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+      for (Size candidate : choices) {
+        if (!CameraGeometry.within1080(candidate.getWidth(),candidate.getHeight())
+            || !Arrays.asList(previews).contains(candidate)) continue;
+        long videoDuration = map.getOutputMinFrameDuration(MediaCodec.class,candidate);
+        long previewDuration = map.getOutputMinFrameDuration(SurfaceTexture.class,candidate);
+        Range<Integer> selected = null;
+        int rate = 0;
+        if (ranges != null) for (Range<Integer> range : ranges) {
+          // Keep the advertised request range: arbitrary narrowed ranges are invalid.
+          // Configured output minimum frame durations bound the actual capture rate.
+          int desired = VideoCapabilityPolicy.captureRate(range.getUpper(),videoDuration,previewDuration);
+          if (desired < range.getLower() || desired < 1
+              || !OfflineVideoEncoder.supportsVideo(candidate.getWidth(),candidate.getHeight(),desired)) continue;
+          if (selected == null || VideoCapabilityPolicy.preferRange(range.getUpper(),desired,range.getLower(),selected.getUpper(),rate,selected.getLower())) {
+            selected = range; rate = desired;
+          }
+        }
+        if (rate == 0 || !OfflineVideoEncoder.supportsVideo(candidate.getWidth(),candidate.getHeight(),rate)) continue;
+        // Keep progressively smaller choices and reserve attempts for other cameras.
+        long area = (long) candidate.getWidth() * candidate.getHeight();
+        if (eligibleModes > 0 && area > previousArea * 3 / 4) continue;
+        if (++eligibleModes > 3) break;
+        previousArea = area;
+        String key = id + ":" + candidate.getWidth() + "x" + candidate.getHeight() + ":" + rate;
+        if (preparingCamera && rejectedModes.contains(key)) continue;
+        selectedMode = key;
+        cameraId = id; size = candidate; fps = selected; frameRate = rate;
+        if (previewTexture != null) previewTexture.setDefaultBufferSize(size.getWidth(),size.getHeight());
+        Integer sensor = c.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        sensorOrientation = sensor == null ? 90 : sensor;
+        frontFacing = Objects.equals(c.get(CameraCharacteristics.LENS_FACING),CameraCharacteristics.LENS_FACING_FRONT);
+        rotation = CameraGeometry.rotation(sensorOrientation,displayDegrees,frontFacing);
+        realtimeSensor = Objects.equals(c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE),CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
+        return;
       }
     }
-    if (cameraId == null) throw new IOException("This device has no available camera.");
-    CameraCharacteristics c = manager.getCameraCharacteristics(cameraId);
-    realtimeSensor =
-        Objects.equals(
-            c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE),
-            CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
-    StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-    if (map == null) throw new IOException("Camera capabilities unavailable.");
-    Size[] choices = map.getOutputSizes(MediaCodec.class);
-    if (choices == null || choices.length == 0)
-      throw new IOException("Camera cannot record video.");
-    size = null;
-    for (Size candidate : choices) {
-      if (candidate.getWidth() <= 1920
-          && candidate.getHeight() <= 1080
-          && candidate.getWidth() * 9 == candidate.getHeight() * 16
-          && (size == null || candidate.getWidth() > size.getWidth())) size = candidate;
-    }
-    if (size == null) throw new IOException("Camera has no supported 720p/1080p video mode.");
-    rotation = Objects.requireNonNullElse(c.get(CameraCharacteristics.SENSOR_ORIENTATION), 90);
-    fps = null;
-    Range<Integer>[] ranges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-    if (ranges != null)
-      for (Range<Integer> range : ranges)
-        if (range.getLower() <= 30
-            && range.getUpper() >= 30
-            && (fps == null
-                || range.getUpper() < fps.getUpper()
-                || range.getLower() > fps.getLower())) fps = range;
+    throw new IOException("No camera and AVC encoder share a supported video mode up to 1080p.");
   }
 
   private void configure() {
@@ -747,46 +878,62 @@ public final class OfflineRecorderService extends Service {
 
   private void cameraFailure(String error) {
     if (destroyed || cameraCleanup != null) return;
-    if (active.get()) {
+    if (active.get() && preparingCamera) {
+      startupCameraFailure = error;
+    } else if (active.get()) {
       failure = error;
       stopRecording();
     } else state.fail(error);
     if (cameraReady != null) cameraReady.countDown();
   }
 
-  private Uri publish(File file) throws IOException {
-    String name =
-        "StereoBridge_"
-            + new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.ROOT).format(new Date())
-            + ".mp4";
-    ContentValues v = new ContentValues();
-    v.put(MediaStore.Video.Media.DISPLAY_NAME, name);
-    v.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
-    v.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Stereo Bridge");
-    v.put(MediaStore.Video.Media.IS_PENDING, 1);
-    Uri uri = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, v);
-    if (uri == null) throw new IOException("Could not create video in Movies.");
-    try {
-      try (InputStream input = new FileInputStream(file);
-          OutputStream output = getContentResolver().openOutputStream(uri)) {
-        if (output == null) throw new IOException("Could not open video storage.");
-        byte[] b = new byte[65536];
-        int n;
-        while ((n = input.read(b)) >= 0) output.write(b, 0, n);
-      }
-      v.clear();
-      v.put(MediaStore.Video.Media.IS_PENDING, 0);
-      if (getContentResolver().update(uri, v, null, null) != 1)
-        throw new IOException("Video publication failed.");
-      return uri;
-    } catch (Exception e) {
+  private void deferRecovery(OfflineVideoEncoder closingEncoder, RecordingStore.Capture capture) {
+    Thread deferred = new Thread(() -> {
+      Uri recovered = null;
       try {
-        getContentResolver().delete(uri, null, null);
-      } catch (Exception cleanup) {
-        e.addSuppressed(cleanup);
+        closingEncoder.awaitRelease();
+        capture.close();
+        recovered = recordingStore.recover();
+      } catch (Exception e) {
+        android.util.Log.w("StereoRecorder", "Deferred video recovery retained", e);
       }
-      throw new IOException("Not enough storage or video save failed.", e);
-    }
+      final Uri result = recovered;
+      main.post(() -> {
+        needsRecovery = recordingStore.hasPending();
+        if (result != null) state.rememberSaved(result.toString());
+        if (!state.busy()) {
+          if (result != null) state.saved(result.toString());
+          else if (needsRecovery) state.fail("Video retained. Tap Retry save when storage is available.");
+        }
+      });
+    }, "encoder-close-recovery");
+    deferred.setDaemon(true);
+    deferred.start();
+  }
+
+  private void startRecovery() {
+    if (worker != null) return;
+    state.saving();
+    worker = new Thread(() -> {
+      Uri recovered = null;
+      String error = null;
+      try { recovered = recordingStore.recover(); }
+      catch (Exception e) { error = message(e); }
+      final Uri result = recovered;
+      final String problem = error;
+      main.post(() -> {
+        needsRecovery = recordingStore.hasPending();
+        if (result != null) state.saved(result.toString());
+        else if (needsRecovery)
+          state.fail("Video retained. Tap Retry save when storage is available."
+              + (problem == null ? "" : " " + problem));
+        else state.idle();
+        worker = null;
+        if (destroyed) cameraHandler.post(this::maybeQuitCameraThread);
+        stopSelf();
+      });
+    }, "video-recovery");
+    worker.start();
   }
 
   private Notification notification(String text) {

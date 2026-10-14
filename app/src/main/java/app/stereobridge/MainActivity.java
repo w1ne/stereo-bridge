@@ -17,11 +17,13 @@ public final class MainActivity extends Activity {
   private BridgeSettings settings;
   private TextureView preview;
   private int transformedWidth=-1,transformedHeight=-1,bufferWidth=-1,bufferHeight=-1,bufferRotation=-1;
+  private boolean transformedFront;
   private SurfaceTexture texture;
   private OfflineRecorderService.LocalBinder recorder, previewOwner;
-  private boolean bound, resumed, pendingRecord, expanded;
+  private boolean bound, resumed, pendingRecord, expanded, permissionRequestInFlight;
   private TextView status, leftLabel, rightLabel, timer;
-  private Button record, advancedButton, last;
+  private Button record, advancedButton, last, permissionSettings, notificationSettings;
+  private TextView notificationHint;
   private LinearLayout advanced;
   private Meter leftMeter, rightMeter;
   private final Handler handler = new Handler(Looper.getMainLooper());
@@ -50,6 +52,8 @@ public final class MainActivity extends Activity {
   }
 
   private void build() {
+    boolean landscape = getResources().getConfiguration().orientation
+        == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
     LinearLayout footer = new LinearLayout(this);
     footer.setOrientation(LinearLayout.VERTICAL);
     ScrollView scroll = new ScrollView(this);
@@ -58,7 +62,7 @@ public final class MainActivity extends Activity {
     scroll.addView(root);
     root.addView(ui.caption("STEREO BRIDGE"));
     ui.space(root, 8);
-    root.addView(ui.text("Two mics.\nOne recording.", 30, true));
+    root.addView(ui.text(landscape ? "Two mics. One recording." : "Two mics.\nOne recording.", landscape ? 24 : 30, true));
     root.addView(ui.caption("Stereo video. No receiver. Works offline."));
     ui.space(root, 16);
     preview = new TextureView(this);
@@ -66,7 +70,7 @@ public final class MainActivity extends Activity {
     FrameLayout previewFrame = new FrameLayout(this);
     previewFrame.setBackgroundColor(Color.BLACK);
     previewFrame.addView(preview, new FrameLayout.LayoutParams(-1, -1));
-    root.addView(previewFrame, new LinearLayout.LayoutParams(-1, ui.dp(250)));
+    root.addView(previewFrame, new LinearLayout.LayoutParams(-1, ui.dp(landscape ? 120 : 250)));
     preview.setSurfaceTextureListener(
         new TextureView.SurfaceTextureListener() {
           public void onSurfaceTextureAvailable(SurfaceTexture texture, int width, int height) {
@@ -91,10 +95,10 @@ public final class MainActivity extends Activity {
         });
     ui.space(root, 12);
     status = ui.text("Ready to record", 18, true);
-    root.addView(status);
+    footer.addView(status);
     timer = ui.caption("");
     timer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-    root.addView(timer);
+    footer.addView(timer);
     ui.space(root, 12);
     LinearLayout mics = ui.card(root);
     leftLabel = ui.caption("");
@@ -109,10 +113,19 @@ public final class MainActivity extends Activity {
     record = ui.button(footer, "Record", true, this::recordOrStop);
     TextView hint =
         ui.caption(
-            "Tap Record to connect both mics and start video.\n"
-                + "Tap Stop to save to Movies / Stereo Bridge.");
+            landscape ? "Capture continues in the background. Stop to save."
+                : "Tap Record to connect both mics and start video.\n"
+                + "Tap Stop to save to Movies / Stereo Bridge.\nCapture continues with the screen asleep or another app open.");
     hint.setGravity(Gravity.CENTER);
     footer.addView(hint);
+    permissionSettings = ui.button(footer, "Open app permission settings", false, this::openAppSettings);
+    notificationHint = ui.caption("Notifications are off. Capture can continue in the background; return here to Stop. Enable notifications for a visible Stop action.");
+    root.addView(notificationHint);
+    notificationSettings = ui.button(root, "Notification settings", false, () -> startActivity(
+        new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName())));
+    ui.button(root, "Privacy policy", false, this::showPrivacy);
     last =
         ui.button(
             root,
@@ -125,7 +138,7 @@ public final class MainActivity extends Activity {
                   startActivity(
                       new Intent(Intent.ACTION_VIEW)
                           .setDataAndType(android.net.Uri.parse(uri), "video/mp4")
-                          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK));
                 } catch (Exception e) {
                   Toast.makeText(
                           this, "Find your video in Movies / Stereo Bridge", Toast.LENGTH_LONG)
@@ -158,11 +171,11 @@ public final class MainActivity extends Activity {
         advanced,
         "Pair microphones",
         false,
-        () -> startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)));
+        () -> startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
     advanced.addView(
         ui.caption(
-            "First use: pair two original DJI Mic Mini transmitters and allow camera, microphone"
-                + " and nearby devices access. Your choices are saved after reboot. Wi-Fi and"
+            "First use: pair two original DJI Mic Mini transmitters and allow camera"
+                + " and nearby devices access (Android 12 or later). Your choices are saved after reboot. Wi-Fi and"
                 + " debugging are not needed. Other microphone models are unsupported."));
     ui.screen(scroll, root, footer);
     refresh();
@@ -170,8 +183,13 @@ public final class MainActivity extends Activity {
 
   private void transform(int width, int height) {
     if (width <= 0 || height <= 0) return;
+    int displayDegrees = getWindowManager().getDefaultDisplay().getRotation() * 90;
+    if (recorder != null) recorder.setDisplayRotation(displayDegrees);
     int[] info = recorder == null ? new int[] {1920, 1080, 90} : recorder.previewInfo();
-    if(width==transformedWidth&&height==transformedHeight&&info[0]==bufferWidth&&info[1]==bufferHeight&&info[2]==bufferRotation)return;
+    boolean front = info.length > 3 && info[3] == 1;
+    if (info.length > 4) info[2] = CameraGeometry.rotation(info[4], displayDegrees, front);
+    if(width==transformedWidth&&height==transformedHeight&&info[0]==bufferWidth&&info[1]==bufferHeight&&info[2]==bufferRotation&&front==transformedFront)return;
+    transformedFront=front;
     transformedWidth=width;transformedHeight=height;bufferWidth=info[0];bufferHeight=info[1];bufferRotation=info[2];
     float sw = info[0], sh = info[1];
     double angle = Math.toRadians(info[2]);
@@ -181,7 +199,7 @@ public final class MainActivity extends Activity {
     float[] corners = {-sw / 2, -sh / 2, sw / 2, -sh / 2, sw / 2, sh / 2, -sw / 2, sh / 2};
     for (int n = 0; n < 4; n++) {
       float x = corners[n * 2], y = corners[n * 2 + 1];
-      target[n * 2] = width / 2f + scale * (float) (x * Math.cos(angle) - y * Math.sin(angle));
+      target[n * 2] = width / 2f + (front ? -1 : 1) * scale * (float) (x * Math.cos(angle) - y * Math.sin(angle));
       target[n * 2 + 1] = height / 2f + scale * (float) (x * Math.sin(angle) + y * Math.cos(angle));
     }
     Matrix matrix = new Matrix();
@@ -221,13 +239,48 @@ public final class MainActivity extends Activity {
     advanced.addView(mute);
   }
 
+  private boolean bluetoothGranted() {
+    return Build.VERSION.SDK_INT < 31
+        || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+  }
+
+  private void openAppSettings() {
+    startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        .setData(android.net.Uri.parse("package:" + getPackageName())));
+  }
+
+  private void showPrivacy() {
+    try (java.io.InputStream input = getAssets().open("privacy.md")) {
+      java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+      byte[] chunk = new byte[4096];
+      for (int count; (count = input.read(chunk)) != -1;) bytes.write(chunk, 0, count);
+      String policy = new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)
+          .replaceAll("(?m)^#+\\s+", "");
+      TextView text = ui.text(policy, 16, false);
+      text.setTextIsSelectable(true);
+      text.setPadding(ui.dp(20), ui.dp(12), ui.dp(20), ui.dp(12));
+      ScrollView scroll = new ScrollView(this);
+      scroll.addView(text);
+      new AlertDialog.Builder(this).setTitle("Privacy policy").setView(scroll)
+          .setPositiveButton("Close", null).show();
+    } catch (java.io.IOException e) {
+      Toast.makeText(this, "Privacy policy could not be opened", Toast.LENGTH_LONG).show();
+    }
+  }
+
   private void select(boolean left) {
     if (OfflineRecorderService.state.busy()) {
       Toast.makeText(this, "Stop before changing microphones", Toast.LENGTH_SHORT).show();
       return;
     }
-    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
-        != PackageManager.PERMISSION_GRANTED) {
+    if (!bluetoothGranted()) {
+      if (settings.flag("denied_" + Manifest.permission.BLUETOOTH_CONNECT)
+          && !shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {
+        openAppSettings();
+        return;
+      }
+      settings.flag("asked_" + Manifest.permission.BLUETOOTH_CONNECT, true);
       requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, 2);
       return;
     }
@@ -236,31 +289,40 @@ public final class MainActivity extends Activity {
       pairingHelp();
       return;
     }
-    String[] labels = devices.stream().map(d -> d.getName()).toArray(String[]::new);
+    String[] labels = devices.stream().map(this::deviceName).toArray(String[]::new);
     new AlertDialog.Builder(this)
         .setTitle(left ? "Left microphone" : "Right microphone")
         .setItems(
             labels,
             (dialog, i) -> {
               BluetoothDevice d = devices.get(i);
-              settings.microphone(left, d.getAddress(), d.getName());
+              settings.microphone(left, d.getAddress(), deviceName(d));
               refresh();
             })
         .setNegativeButton("Cancel", null)
         .show();
   }
 
+  private String deviceName(BluetoothDevice device) {
+    try { return device.getName(); }
+    catch (SecurityException denied) { return "Bluetooth access needed"; }
+  }
+
   private List<BluetoothDevice> devices() {
-    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
-        != PackageManager.PERMISSION_GRANTED) return Collections.emptyList();
+    if (!bluetoothGranted()) return Collections.emptyList();
     List<BluetoothDevice> found = new ArrayList<>();
     BluetoothManager manager = getSystemService(BluetoothManager.class);
     BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+    try {
     if (adapter != null)
       for (BluetoothDevice d : adapter.getBondedDevices())
         if (d.getName() != null
             && d.getName().startsWith("DJI Mic Mini")
             && !d.getName().startsWith("DJI Mic Mini 2")) found.add(d);
+    } catch (SecurityException denied) {
+      OfflineRecorderService.state.fail("Allow nearby devices access in app settings.");
+      return Collections.emptyList();
+    }
     found.sort(Comparator.comparing(BluetoothDevice::getAddress));
     return found;
   }
@@ -275,12 +337,16 @@ public final class MainActivity extends Activity {
         .setPositiveButton(
             "Open Bluetooth",
             (d, w) ->
-                startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)))
+                startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)))
         .setNegativeButton("Close", null)
         .show();
   }
 
   private void recordOrStop() {
+    if (!OfflineRecorderService.state.busy() && OfflineRecorderService.needsRecovery) {
+      startService(new Intent(this, OfflineRecorderService.class).setAction(OfflineRecorderService.RECOVER));
+      return;
+    }
     if (OfflineRecorderService.state.busy()) {
       if (OfflineRecorderService.state.phase() != OfflineSessionState.Phase.SAVING)
         startService(
@@ -292,15 +358,27 @@ public final class MainActivity extends Activity {
   }
 
   private void permissions(boolean recording) {
+    if (permissionRequestInFlight) return;
     List<String> missing = new ArrayList<>();
-    for (String p :
-        new String[] {
-          Manifest.permission.CAMERA,
-          Manifest.permission.RECORD_AUDIO,
-          Manifest.permission.BLUETOOTH_CONNECT
-        })
-      if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED
-          && (recording || p.equals(Manifest.permission.CAMERA))) missing.add(p);
+    List<String> required = new ArrayList<>();
+    required.add(Manifest.permission.CAMERA);
+    if (Build.VERSION.SDK_INT >= 31) required.add(Manifest.permission.BLUETOOTH_CONNECT);
+    for (String p : required) {
+      if (checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED && settings.flag("denied_" + p))
+        settings.flag("denied_" + p, false);
+    }
+    for (String p : required)
+      if ((!p.equals(Manifest.permission.BLUETOOTH_CONNECT) || Build.VERSION.SDK_INT >= 31)
+          && checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED
+          && (recording || p.equals(Manifest.permission.CAMERA))) {
+        if (!PermissionPromptPolicy.shouldRequest(recording, settings.flag("denied_" + p), shouldShowRequestPermissionRationale(p))) {
+          pendingRecord = false;
+          OfflineRecorderService.state.fail("Allow camera and nearby devices access in app settings.");
+          refresh();
+          return;
+        }
+        missing.add(p);
+      }
     if (recording
         && Build.VERSION.SDK_INT >= 33
         && !settings.flag("notification_asked")
@@ -310,18 +388,23 @@ public final class MainActivity extends Activity {
       missing.add(Manifest.permission.POST_NOTIFICATIONS);
     }
     if (!missing.isEmpty()) {
+      for (String p : missing) settings.flag("asked_" + p, true);
+      permissionRequestInFlight = true;
       requestPermissions(missing.toArray(new String[0]), 1);
       return;
     }
+    if (!recording && bluetoothGranted()
+        && OfflineRecorderService.state.message().startsWith("Allow camera and nearby"))
+      OfflineRecorderService.state.idle();
     attach();
     if (recording) startRecording();
   }
 
   private void startRecording() {
+    if (!resumed) { pendingRecord = true; return; }
     boolean synthetic = BuildConfig.DEBUG && getIntent().getBooleanExtra("synthetic", false);
     if (!synthetic
-        && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
-            != PackageManager.PERMISSION_GRANTED) {
+        && !bluetoothGranted()) {
       pendingRecord = false;
       return;
     }
@@ -331,7 +414,7 @@ public final class MainActivity extends Activity {
           && settings.address(true).isEmpty()
           && settings.address(false).isEmpty()) {
         for (int n = 0; n < 2; n++)
-          settings.microphone(n == 0, found.get(n).getAddress(), found.get(n).getName());
+          settings.microphone(n == 0, found.get(n).getAddress(), deviceName(found.get(n)));
       } else {
         pairingHelp();
         return;
@@ -342,10 +425,15 @@ public final class MainActivity extends Activity {
       return;
     }
     pendingRecord = false;
-    startForegroundService(
-        new Intent(this, OfflineRecorderService.class)
-            .setAction(OfflineRecorderService.START)
-            .putExtra("synthetic", synthetic));
+    try {
+      startForegroundService(
+          new Intent(this, OfflineRecorderService.class)
+              .setAction(OfflineRecorderService.START)
+              .putExtra("synthetic", synthetic));
+    } catch (RuntimeException e) {
+      OfflineRecorderService.state.fail("Could not start capture. Keep the app open and tap Record again.");
+      refresh();
+    }
   }
 
   private void attach() {
@@ -361,16 +449,21 @@ public final class MainActivity extends Activity {
   @Override
   public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
     super.onRequestPermissionsResult(request, permissions, results);
-    if (request == 1) {
+    if (request == 1 || request == 2) {
+      permissionRequestInFlight = false;
       boolean requiredGranted = true;
-      for (int n = 0; n < permissions.length; n++)
-        if (!permissions[n].equals(Manifest.permission.POST_NOTIFICATIONS)
-            && results[n] != PackageManager.PERMISSION_GRANTED) requiredGranted = false;
-      if (requiredGranted) permissions(pendingRecord);
-      else {
+      for (int n = 0; n < permissions.length; n++) {
+        boolean granted = n < results.length && results[n] == PackageManager.PERMISSION_GRANTED;
+        if (!permissions[n].equals(Manifest.permission.POST_NOTIFICATIONS)) {
+          settings.flag("denied_" + permissions[n], !granted);
+          if (!granted) requiredGranted = false;
+        }
+      }
+      if (requiredGranted && request == 1 && resumed) permissions(pendingRecord);
+      else if (!requiredGranted) {
         pendingRecord = false;
         OfflineRecorderService.state.fail(
-            "Allow camera, microphone and nearby devices access to record.");
+            "Allow camera and nearby devices access to record. Use app settings if access was blocked.");
       }
     }
   }
@@ -397,6 +490,7 @@ public final class MainActivity extends Activity {
             : s.phase() == OfflineSessionState.Phase.CONNECTING
                 ? "Cancel"
                 : s.phase() == OfflineSessionState.Phase.RECORDING ? "Stop" : "Record";
+    if (!s.busy() && OfflineRecorderService.needsRecovery) action = "Retry save";
     textIfChanged(record,action);
     record.setEnabled(s.phase() != OfflineSessionState.Phase.SAVING);
     long seconds =
@@ -405,6 +499,12 @@ public final class MainActivity extends Activity {
         s.phase() == OfflineSessionState.Phase.RECORDING
             ? String.format(Locale.ROOT, "%02d:%02d · Stereo recording", seconds / 60, seconds % 60)
             : "");
+    boolean denied = checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+        || !bluetoothGranted();
+    permissionSettings.setVisibility(denied ? View.VISIBLE : View.GONE);
+    boolean notificationsOff = !getSystemService(NotificationManager.class).areNotificationsEnabled();
+    notificationHint.setVisibility(notificationsOff ? View.VISIBLE : View.GONE);
+    notificationSettings.setVisibility(notificationsOff ? View.VISIBLE : View.GONE);
     last.setEnabled(!s.busy() && !s.savedUri().isEmpty());
   }
 
@@ -429,7 +529,7 @@ public final class MainActivity extends Activity {
     super.onResume();
     resumed = true;
     handler.post(tick);
-    permissions(false);
+    permissions(pendingRecord);
   }
 
   @Override
