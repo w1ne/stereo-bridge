@@ -7,9 +7,9 @@ about: Report a reproducible audio, setup or interface problem
 
 **Microphone model and firmware:**
 
-**Camera app and version:**
+**App version and installation source (Play / GitHub / local):**
 
-**Stereo Bridge version:**
+**Battery levels and whether Bluetooth stayed enabled:**
 
 **Steps to reproduce:**
 

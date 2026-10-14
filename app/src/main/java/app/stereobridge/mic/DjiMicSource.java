@@ -50,7 +50,7 @@ public final class DjiMicSource implements MicSource {
               t.setDaemon(true);
               return t;
             });
-    watchdog.scheduleAtFixedRate(
+    watchdog.scheduleWithFixedDelay(
         () -> {
           if (running && System.nanoTime() >= deadline) closeSocket();
         },
@@ -85,10 +85,13 @@ public final class DjiMicSource implements MicSource {
       byte[] bytes = new byte[4096];
       int previous = -1;
       long timestamp = 0;
+      long previousReceipt = 0;
+      long previousClock = 0;
       while (running) {
         int count = input.read(bytes);
         if (count < 0) throw new EOFException("Microphone disconnected: " + mac);
         if (count == 0) continue;
+        long receipt = System.nanoTime();
         for (DjiPacketParser.Frame frame : parser.feed(bytes, 0, count)) {
           if (!running) break;
           deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
@@ -106,13 +109,20 @@ public final class DjiMicSource implements MicSource {
               decoder.close();
               decoder = new NativeLc3();
               timestamp = Math.max(timestamp, System.nanoTime() - 20_000_000L);
-              listener.onStatus("Sequence discontinuity " + mac);
+              listener.onStatus(
+                  "Sequence discontinuity previous=" + previous + " next=" + frame.sequence
+                      + " missing=" + missing + " receiptGapMs="
+                      + ((receipt - previousReceipt) / 1_000_000L)
+                      + " clockDelta=" + ((frame.bluetoothClockTicks - previousClock) & 0xffffffffL)
+                      + " discardedBytes=" + parser.getDiscardedBytes());
             }
           }
           if (!running) break;
           listener.onAudio(decoder.decode(frame.payload), timestamp);
           timestamp += FRAME_NS;
           previous = frame.sequence;
+          previousReceipt = receipt;
+          previousClock = frame.bluetoothClockTicks;
         }
       }
     } catch (SecurityException error) {

@@ -1,44 +1,57 @@
+<p align="center"><img src="docs/site/assets/icon.png" width="88" alt="Stereo Bridge icon"></p>
+
 # Stereo Bridge
 
-**Two mics. One camera.** Open-source Android audio routing for two original DJI Mic Mini transmitters without a receiver. Audio decoding and mixing run on the phone. Video stays in your camera app.
+**Two wireless mics. One stereo video. No receiver.**
 
-![Stereo Bridge dashboard](docs/site/assets/dashboard-dark.png)
+An open-source Android recorder that connects directly to two original DJI Mic Mini transmitters and saves each microphone on its own audio channel alongside camera video.
+
+[Get started](docs/usage.md) · [Compatibility](docs/compatibility.md) · [How it works](docs/architecture.md) · [Build](docs/build.md) · [Releases](https://github.com/w1ne/stereo-bridge/releases) · [Google Play](https://play.google.com/store/apps/details?id=app.stereobridge)
+
+## Why Stereo Bridge?
+
+For interviews, conversations and two-person recordings, separate microphone channels let you adjust each voice independently in your editor. Stereo Bridge keeps the setup small: your phone and two transmitters. The app decodes audio locally and records video with its own camera screen.
+
+- **Separate voices:** one mic on the left channel, one on the right; independent meters, gain, mute and channel swap.
+- **One-button capture:** with both paired mics powered on, open the app and tap **Record**. Tap **Stop** to save to **Movies / Stereo Bridge**.
+- **Offline by design:** no account, ads, analytics, Internet permission, Wi-Fi or debugging setup.
+- **Ordinary permissions:** camera and paired Bluetooth access; recording notifications are optional.
+- **Open implementation:** inspect the Bluetooth driver, LC3 decoding and recording pipeline.
+
+![Stereo Bridge recorder on Pixel 6](docs/site/assets/recorder-home.png)
 
 ## Get started
 
-1. Pair both transmitters in Android Bluetooth settings.
-2. Tap **Start**. Stereo Bridge selects exactly two paired microphones and guides you through permissions and first-time camera routing setup.
-3. Camera opens when both inputs are live. Use Camera’s record button to shoot video.
-4. Tap **Stop** in Stereo Bridge or its notification when finished.
+1. Pair both original DJI Mic Mini transmitters in Android Bluetooth settings.
+2. Open Stereo Bridge and grant Camera and Nearby devices access (Android 12+).
+3. Tap **Record**, then **Stop**. Use **Open last video** to watch the saved take.
 
-Gain, mute, channel selection, swapping and an audio-only preview are under **Advanced**. The interface follows your phone’s light or dark theme.
+Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and both transmitters powered on. Setup and controls survive phone reboots; recording starts only when you tap Record.
 
-[Downloads](https://github.com/w1ne/stereo-bridge/releases) · [Setup and privacy](https://shylenko.com/stereo-bridge/) · [Report an issue](https://github.com/w1ne/stereo-bridge/issues)
+## Release status
 
-## Compatibility and release status
+**0.2.0-offline-rc4** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
 
-**Release candidate: 0.1.0-rc3.** Tested configuration: Pixel 8 Pro, Android 17, stock Pixel Camera and two original DJI Mic Mini transmitters. Other phones, Android versions and camera apps remain unverified. Other DJI microphone generations and other manufacturers are unsupported.
+The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update is being prepared for review; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
 
-Independent capture and decoding produced user-confirmed recognizable speech. The rc3 candidate fixes audio lost during camera-buffer backpressure; its stock-camera stereo speech take was confirmed clear by the user. Start, Camera handoff, Stop and helper cleanup were exercised on the Pixel. Long recordings, clock drift and broader device compatibility remain unvalidated. See [verification notes](docs/release-verification.md). Store availability is pending; this is not a claim of Google Play approval.
+Physical microphone testing uses **Pixel 6 / Android 15** and **two original DJI Mic Mini transmitters**. Other phones require validation. DJI Mic, DJI Mic 2, Mic Mini 2 and other manufacturers are unsupported. See [compatibility and known limits](docs/compatibility.md).
 
-Camera routing needs user-authorized **Wireless debugging**. Enable Developer options and Wireless debugging while connected to Wi-Fi; pair the app locally using Android’s six-digit code. Keep Wireless debugging enabled for camera sessions. No receiver, root, Shizuku, DJI software or computer runtime is required. Normal Android application permissions alone cannot register the camera audio injector. Changing networks or rebooting may require reconnection through Camera setup.
+## Repository map
 
-Allow notifications to see connection failures while Camera is foreground. If notifications or the alert channel are disabled, those alerts may be absent. The app does not automatically restart microphones after a failure. Precise inter-microphone clock synchronization and drift correction have not been validated.
+| Path | Purpose |
+| --- | --- |
+| [`app/`](app/) | Android UI, recording service, microphone transport, native codec and unit tests |
+| [`docs/`](docs/README.md) | Usage, compatibility, architecture, build and verification guides |
+| [`third_party/`](third_party/) | Vendored Google liblc3 source, upstream revision and license |
+| [`scripts/`](scripts/) | Synthetic emulator capture and MP4 verification tools |
+| [`store/`](store/) | Play listing source and store assets |
+| [`.github/`](.github/) | Build/emulator CI, website deployment and issue templates |
+| [`docs/site/`](docs/site/) | Public product page and versioned privacy policies |
 
-## Build
+## Contribute and support
 
-JDK 17, Android SDK 36, NDK 28.2.13676358 and CMake 3.22.1. Gradle 9.6.0 is pinned by the wrapper with a SHA-256 distribution checksum.
+Start with [building the app](docs/build.md), [contributing](CONTRIBUTING.md), or [reporting a bug](https://github.com/w1ne/stereo-bridge/issues/new/choose). Include the app version, phone/Android version and microphone model. Keep personal recordings and full phone logs private.
 
-```sh
-./gradlew testDebugUnitTest lintRelease assembleDebug bundleRelease
-```
+[Privacy](PRIVACY.md) · [Security](SECURITY.md) · [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-Application ID: `app.stereobridge`; debug variant adds `.debug`. Release signing is optional for local builds. To sign, set `STEREO_BRIDGE_SIGNING_PROPERTIES` to an external properties file containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword`. Keep all credentials outside this repository. Private recordings, lab logs, keys and local SDK settings are ignored.
-
-The packaged routing helper runs through an authenticated local ADB connection. No executable code is downloaded at runtime. Buffers are bounded; Stop cancels pending capture and routing work, and errors require explicit user retry. Current regression suite: 31 tests.
-
-## Project
-
-[Privacy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Driver notes](docs/independent-driver-research.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
-
-Apache-2.0 application source; bundled libraries retain their respective licenses. Independent project, not affiliated with or endorsed by DJI. Support: andrii@shylenko.com.
+Apache-2.0 application source; Google liblc3 retains its license. Independent project, not affiliated with or endorsed by DJI. Published by Artomatica. Support: andrii@shylenko.com.

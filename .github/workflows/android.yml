@@ -1,8 +1,12 @@
 name: Android build
 on: [push, pull_request]
+concurrency:
+  group: android-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -14,4 +18,29 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
-      - run: chmod +x gradlew && ./gradlew testDebugUnitTest assembleDebug bundleRelease
+      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintRelease assembleDebug bundleRelease
+      - name: Install media inspection tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Camera and encoder smoke test
+        uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: pixel_4
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back emulated
+          disable-animations: true
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            python3 scripts/offline-emulator-smoke.py --serial emulator-5554 --adb "$ANDROID_HOME/platform-tools/adb" --output /tmp/stereo-offline-smoke
+      - name: Verify stereo MP4 tracks
+        run: python3 scripts/verify-stereo-mp4.py /tmp/stereo-offline-smoke/videos
+      - name: Save synthetic emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-emulator-evidence
+          path: /tmp/stereo-offline-smoke
+          if-no-files-found: ignore

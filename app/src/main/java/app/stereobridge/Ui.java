@@ -116,25 +116,38 @@ final class Ui {
     b.setButtonTintList(ColorStateList.valueOf(accent));
   }
 
-  void screen(ScrollView scroll, LinearLayout root) {
+  void screen(ScrollView scroll, LinearLayout root, LinearLayout footer) {
     activity
         .getWindow()
         .setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
+    LinearLayout container = new LinearLayout(activity);
+    container.setOrientation(LinearLayout.VERTICAL);
+    container.setBackgroundColor(background);
     scroll.setFillViewport(true);
     scroll.setBackgroundColor(background);
-    scroll.setClipToPadding(true);
-    scroll.setOnApplyWindowInsetsListener(
+    container.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    footer.setPadding(dp(22), dp(8), dp(22), dp(12));
+    footer.setBackgroundColor(background);
+    container.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+    container.setOnApplyWindowInsetsListener(
         (v, insets) -> {
-          android.graphics.Insets bars =
-              insets.getInsets(
-                  WindowInsets.Type.systemBars()
-                      | WindowInsets.Type.displayCutout()
-                      | WindowInsets.Type.ime());
-          scroll.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+          if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars()
+                | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+            container.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+          } else {
+            android.view.DisplayCutout cutout = insets.getDisplayCutout();
+            container.setPadding(
+                Math.max(insets.getSystemWindowInsetLeft(), cutout == null ? 0 : cutout.getSafeInsetLeft()),
+                Math.max(insets.getSystemWindowInsetTop(), cutout == null ? 0 : cutout.getSafeInsetTop()),
+                Math.max(insets.getSystemWindowInsetRight(), cutout == null ? 0 : cutout.getSafeInsetRight()),
+                Math.max(insets.getSystemWindowInsetBottom(), cutout == null ? 0 : cutout.getSafeInsetBottom()));
+          }
           return insets;
         });
-    root.setPadding(dp(22), dp(24), dp(22), dp(28));
-    activity.setContentView(scroll);
+    root.setPadding(dp(22), dp(24), dp(22), dp(12));
+    activity.setContentView(container);
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
     android.view.WindowInsetsController controller = activity.getWindow().getInsetsController();
     if (controller != null) {
       int mask =
@@ -142,7 +155,13 @@ final class Ui {
               | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
       controller.setSystemBarsAppearance(dark ? 0 : mask, mask);
     }
-    scroll.requestApplyInsets();
+    } else {
+      View decor = activity.getWindow().getDecorView();
+      int mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+      decor.setSystemUiVisibility(dark ? decor.getSystemUiVisibility() & ~mask
+          : decor.getSystemUiVisibility() | mask);
+    }
+    container.requestApplyInsets();
   }
 
   void space(LinearLayout parent, int size) {
