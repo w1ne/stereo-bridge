@@ -55,10 +55,12 @@ API 31 x86_64 validation passed on earlier source `2fafcd6`: [Actions run 384350
 
 The current API29 workflow passed on source `66498ab`; see the code 6 result above. Synthetic testing cannot prove Bluetooth microphone intelligibility, physical clock drift or device-wide compatibility. The local Mac emulator could not boot within available disk space; temporary packages were removed.
 
-## Distribution gate
+## Distribution status
 
-Build, unit-test, lint, signature and alignment results must be attached to the exact candidate. Update the public privacy page, store assets and camera/connectedDevice foreground-service declarations before submitting code 7. Codes 5 and 6 were uploaded to a production draft; code 7 replaces them before submission. Google Play approval is not guaranteed. The prior 0.1 release submission is separate; no new submission or approval is asserted here.
+Signed code 7 was submitted with the updated listing/screenshots, reviewer instructions and camera/connectedDevice declarations on 14 October 2026. Google Play shows Changes in review, with automatic quick checks still running. Managed publishing is off, so approved changes publish automatically. The old 0.1 build remains live until the update is approved. See [release record](store-offline-update.md); approval is not claimed.
 
 ## Final preview correction (code 7)
 
 Final source review confirmed TextureView already applies sensor orientation and default front mirroring. The app preview now compensates display rotation only and uses sensor-oriented dimensions for uniform crop. Three pure geometry regression tests were added. 109 local unit tests passed, including the three geometry regressions; signed APK/AAB and release lint passed. The Pixel release recorded 22.39 seconds with both real mics, continued across Home, returned to Recording and saved on Stop. Full decode passed: 1080p H.264 and 48kHz two-channel AAC. Current screenshots demonstrate the corrected upright preview. The change affects preview, not encoded capture orientation.
+
+[Final code 7 API29 hosted check passed](https://github.com/w1ne/stereo-bridge/actions/runs/38601216505) on exact application source `1f9a6b3`. Public signed APK/AAB/checksum digests were verified against local files. The public muted screen demonstration and developer screenshot were explicitly approved; raw microphone media remains private.

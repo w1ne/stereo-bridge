@@ -6,7 +6,7 @@
 
 An open-source Android recorder that connects directly to two original DJI Mic Mini transmitters and saves each microphone on its own audio channel alongside camera video.
 
-[Get started](docs/usage.md) · [Compatibility](docs/compatibility.md) · [How it works](docs/architecture.md) · [Build](docs/build.md) · [Releases](https://github.com/w1ne/stereo-bridge/releases) · [Google Play](https://play.google.com/store/apps/details?id=app.stereobridge)
+[Get started](docs/usage.md) · [Compatibility](docs/compatibility.md) · [How it works](docs/architecture.md) · [Build](docs/build.md) · [Download candidate](https://github.com/w1ne/stereo-bridge/releases/tag/v0.2.0-offline-rc4) · [Google Play](https://play.google.com/store/apps/details?id=app.stereobridge)
 
 ## Why Stereo Bridge?
 
@@ -32,7 +32,7 @@ Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and b
 
 **0.2.0-offline-rc4** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
 
-The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update is being prepared for review; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
+The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update was submitted to Google Play on 14 October 2026 and is in the review queue; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
 
 Physical microphone testing uses **Pixel 6 / Android 15** and **two original DJI Mic Mini transmitters**. Other phones require validation. DJI Mic, DJI Mic 2, Mic Mini 2 and other manufacturers are unsupported. See [compatibility and known limits](docs/compatibility.md).
 

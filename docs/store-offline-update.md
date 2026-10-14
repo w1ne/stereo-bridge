@@ -1,17 +1,32 @@
-# Google Play update checklist — DRAFT offline candidate
+# Google Play release record — 14 October 2026
 
-Version code 7 / 0.2.0-offline-rc4 changes the previously published bridge into an offline recorder. The owner explicitly authorized the Google Play production update and public repository publication on 14 October 2026. The checklist records work required for that authorized submission.
+## Submitted update
 
-Current status: signed code 6 was accepted into a production draft, code 5 excluded, release notes and offline listing draft saved, reviewer access steps saved. API29 CI passed on 66498ab; 106 local unit tests and two Pixel synthetic takes passed. Camera/connectedDevice declaration text is prepared but needs a current real-device demonstration URL. Old screenshots must be replaced. No offline update has been sent for review.
+**Stereo Bridge 0.2.0-offline-rc4, version code 7**, was submitted under Artomatica. Publishing overview shows **Changes in review**. Google's automatic quick checks were still running at submission. Managed publishing is off: approved changes will publish automatically at 100% rollout in the existing 178 targeted countries/regions. This is submission confirmation, not approval or a claim that the offline update is already live.
 
-Before submitting code 7:
+Submitted together:
 
-1. Complete hardware and compatibility checks in [offline verification](offline-verification.md), including permissions denied/granted, background/sleep Stop, direct save/recovery, repeat capture and endurance. Record limits accurately.
-2. Replace screenshots and demonstration video with built-in Record/Stop. Demonstrate two distinct channels, a reboot and offline capture.
-3. Use the candidate [listing draft](../store/listing.md): ordinary Bluetooth pairing, Camera/Nearby devices access, optional notifications and settings recovery. No phone Microphone or debugging setup.
-4. Declare camera and connectedDevice foreground-service use. Describe paired external microphone RFCOMM streams and provide explicit user-started capture/background Stop demonstration. Google determines eligibility and approval.
-5. Review and publish the offline privacy policy with the version update. In-app policy is generated from root PRIVACY.md. Website draft is not yet deployed.
-6. Validate signed code 7 AAB, API29+ behavior, all three native ABIs and 16 KiB page compatibility before upload. Verify resulting manifest and final dependency/data declarations.
-7. Upload only after required validation, assets and declarations are complete; inspect Google processing and review status.
+- Signed code 7 AAB; codes 5 and 6 excluded from the production draft.
+- Accurate offline short/full description.
+- Four current Pixel recorder screenshots, with the recorder screen first.
+- New feature graphic matching the offline architecture.
+- Camera/connectedDevice foreground-service declarations explaining local Camera2 capture and received paired RFCOMM audio, with the [current muted demonstration](https://shylenko.com/stereo-bridge/assets/review-demo-offline.mp4).
+- Reviewer hardware/setup instructions for code 7: two original DJI Mic Mini transmitters, ordinary pairing, Camera/Nearby devices, Record/Stop. No login, Wi-Fi, receiver or debugging.
 
-Local build success does not establish hardware compatibility, endurance or Google Play approval.
+The legacy microphone-service declaration/demo remains associated with the existing code 3 bridge while it is still active. Code 7 does not request RECORD_AUDIO or FOREGROUND_SERVICE_MICROPHONE. Data-safety declarations remain no off-device collection/sharing, no advertising or analytics. The current [public privacy policy](https://shylenko.com/stereo-bridge/privacy.html) and [version 0.1 archive](https://shylenko.com/stereo-bridge/privacy-0.1.html) are live. AI-assisted icon/feature artwork is labeled; screenshots are actual device captures. The owner approved developer imagery. Public demonstration video has no audio and masks the phone home screen.
+
+## Verification
+
+- 109 local unit tests passed; release lint zero errors/nine warnings; signed APK/AAB built and signature/16KiB ZIP checks passed.
+- Native libraries match the alignment-verified code 6 binaries; bundled privacy matches source.
+- Exact application source `1f9a6b3` passed [API29 hosted capture checks](https://github.com/w1ne/stereo-bridge/actions/runs/38601216505): repeat/background/sleep/reboot, separate synthetic stereo tones, monotonic timestamps and no silent 100 ms windows.
+- Pixel 6 / Android 15 real code 7 take saved after background recording; 22.39-second 1080p H.264/stereo AAC MP4 fully decoded. Earlier code 6 real take 42.34 seconds also decoded.
+- Multiple independent source reviews addressed codec profile/level, native preview transform, permissions and session/descriptor lifetime. Final focused reviews found no serious issues.
+
+[Version-scoped verification and limits](offline-verification.md) retain the separate earlier 375-second sequence-loss stop and 15-minute successful take. Final-code endurance and physical microphone reboot remain unverified. No universal phone compatibility or Google approval is claimed.
+
+## Public source and downloads
+
+[Organized repository](https://github.com/w1ne/stereo-bridge) · [Signed APK/AAB and checksums](https://github.com/w1ne/stereo-bridge/releases/tag/v0.2.0-offline-rc4) · [Usage](usage.md) · [Compatibility](compatibility.md)
+
+Published asset digests match the local signed artifacts. Raw microphone recordings and full diagnostic logs remain private. The Pixel retains the final signed release; test app removed, original Wi-Fi/size/rotation restored, wireless debugging stays off.

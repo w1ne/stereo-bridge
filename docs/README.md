@@ -16,8 +16,10 @@
 ## Release evidence
 
 - [Current offline candidate verification](offline-verification.md)
-- [Google Play update checklist](store-offline-update.md)
+- [Google Play submission record](store-offline-update.md)
 - [Earlier 0.1 stock-camera bridge verification](release-verification.md) — historical architecture
 - [Store listing source](../store/listing.md)
+
+[Repository presentation and examples](repository-guide.md) explains the documentation layout.
 
 `superpowers/specs/` and `superpowers/plans/` preserve implementation decisions and review history. They are working engineering records; the usage and compatibility guides describe the current candidate.
