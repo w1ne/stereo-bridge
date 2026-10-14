@@ -18,6 +18,8 @@ For interviews, conversations and two-person recordings, separate microphone cha
 - **Ordinary permissions:** camera and paired Bluetooth access; recording notifications are optional.
 - **Open implementation:** inspect the Bluetooth driver, LC3 decoding and recording pipeline.
 
+![Stereo Bridge recorder on Pixel 6](docs/site/assets/recorder-home.png)
+
 ## Get started
 
 1. Pair both original DJI Mic Mini transmitters in Android Bluetooth settings.
@@ -40,6 +42,7 @@ Physical microphone testing uses **Pixel 6 / Android 15** and **two original DJI
 | --- | --- |
 | [`app/`](app/) | Android UI, recording service, microphone transport, native codec and unit tests |
 | [`docs/`](docs/README.md) | Usage, compatibility, architecture, build and verification guides |
+| [`third_party/`](third_party/) | Vendored Google liblc3 source, upstream revision and license |
 | [`scripts/`](scripts/) | Synthetic emulator capture and MP4 verification tools |
 | [`store/`](store/) | Play listing source and store assets |
 | [`.github/`](.github/) | Build/emulator CI, website deployment and issue templates |

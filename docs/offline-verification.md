@@ -61,4 +61,4 @@ Build, unit-test, lint, signature and alignment results must be attached to the 
 
 ## Final preview correction (code 7)
 
-Final source review confirmed TextureView already applies sensor orientation and default front mirroring. The app preview now compensates display rotation only and uses sensor-oriented dimensions for uniform crop. Three pure geometry regression tests were added. Fresh build and device checks are required; this changes the preview, not encoded capture orientation.
+Final source review confirmed TextureView already applies sensor orientation and default front mirroring. The app preview now compensates display rotation only and uses sensor-oriented dimensions for uniform crop. Three pure geometry regression tests were added. 109 local unit tests passed, including the three geometry regressions; signed APK/AAB and release lint passed. The Pixel release recorded 22.39 seconds with both real mics, continued across Home, returned to Recording and saved on Stop. Full decode passed: 1080p H.264 and 48kHz two-channel AAC. Current screenshots demonstrate the corrected upright preview. The change affects preview, not encoded capture orientation.

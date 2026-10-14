@@ -28,6 +28,6 @@ No phone Microphone, Internet, location, Bluetooth discovery, broad storage, roo
 
 ## Known limits
 
-A previous real-microphone candidate completed a 15-minute take, but another stopped on a large sequence discontinuity and retained a playable partial video. The cause is unclassified. The current code 6 endurance/reboot microphone check remains pending charged transmitters. Independent microphone clock drift and Bluetooth scheduling need more hardware coverage.
+A previous real-microphone candidate completed a 15-minute take, but another stopped on a large sequence discontinuity and retained a playable partial video. The cause is unclassified. Code 7 passed a short real-microphone background capture; final-code endurance and a physical microphone reboot check remain unverified. Independent microphone clock drift and Bluetooth scheduling need more hardware coverage.
 
 Version 0.2 records inside Stereo Bridge. It does not expose a virtual audio device to other camera apps. Historical version 0.1 used a different debugging-dependent stock-camera bridge.
