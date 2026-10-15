@@ -17,3 +17,5 @@ dist/
 
 **/.cxx/
 **/.externalNativeBuild/
+
+**/__pycache__/
