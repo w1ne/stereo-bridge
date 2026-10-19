@@ -17,7 +17,7 @@ First use requires pairing both original DJI Mic Mini transmitters in Android Se
 
 ## Camera video parity candidate (unreleased)
 
-Unit and emulator checks pass on the camera parity branch (144 unit tests). Physical results are recorded incrementally in the implementation plan (docs/superpowers/plans/2026-10-18-camera-video-parity.md, Task 13) as each check completes. Until physical takes are attached, no parity claim is made. Known verification gaps: API 29 emulator smoke was blocked locally by missing system image and low host resources; the hosted workflow remains the emulator gate.
+144 unit tests pass on the camera parity branch. Local API 29 emulator smoke was blocked by a missing system image and low host resources, so the hosted CI workflow remains the emulator gate; no external CI result is claimed yet. Physical takes are not attached yet and no parity claim is made. Physical results are recorded incrementally in the implementation plan (docs/superpowers/plans/2026-10-18-camera-video-parity.md, Task 13) as each check completes.
 
 ## Local package checks (code 6)
 

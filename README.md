@@ -13,7 +13,7 @@ An open-source Android recorder that connects directly to two original DJI Mic M
 For interviews, conversations and two-person recordings, separate microphone channels let you adjust each voice independently in your editor. Stereo Bridge keeps the setup small: your phone and two transmitters. The app decodes audio locally and records video with its own camera screen.
 
 - **Separate voices:** one mic on the left channel, one on the right; independent meters, gain, mute and channel swap.
-- **Camera parity where the hardware allows:** 4K30/4K60/1080p60/1080p30, video stabilization, tap-to-focus, zoom, torch, camera flip, and 10-bit HDR on supporting devices.
+- **Camera quality where the hardware allows (unreleased candidate):** 4K30/4K60/1080p60/1080p30, video stabilization, tap-to-focus, zoom, torch, camera flip, and 10-bit HDR on supporting devices.
 - **One-button capture:** with both paired mics powered on, open the app and tap **Record**. Tap **Stop** to save to **Movies / Stereo Bridge**.
 - **Offline by design:** no account, ads, analytics, Internet permission, Wi-Fi or debugging setup.
 - **Ordinary permissions:** camera and paired Bluetooth access; recording notifications are optional.
@@ -31,7 +31,7 @@ Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and b
 
 ## Release status
 
-**0.2.0-offline-rc4** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode up to 1080p with bounded startup fallback.
+**0.2.0-offline-rc4** is the current offline recorder candidate. Android 10+, ARM32, ARM64 and x86_64; camera/encoder capabilities select a usable mode from the 4K30/4K60/1080p60/1080p30 matrix with a bounded legacy fallback on devices that lack canonical sizes.
 
 The Google Play link currently serves the earlier **0.1.0-rc3** stock-camera bridge, which requires wireless debugging. The offline update was submitted to Google Play on 14 October 2026 and is in the review queue; it is not yet live. [Release status and verification](docs/offline-verification.md) distinguish each version and its test results.
 
