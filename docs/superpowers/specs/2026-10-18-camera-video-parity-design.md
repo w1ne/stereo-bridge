@@ -19,7 +19,7 @@ Pixel 6 capability parity remains unprobed until that device is connected; the d
 
 ## Mode matrix and negotiation
 
-Modes (16:9 only): 4K30 (default), 4K60, 1080p60, 1080p30. A mode is feasible on a camera only when all three agree: the camera advertises the size for both `MediaCodec` and `SurfaceTexture` outputs, the encoder ladder can encode the exact width, height and rate, and an AE target FPS range covers the rate.
+Modes (16:9 only): 4K30 (default), 4K60, 1080p60, 1080p30. A mode is feasible on a camera only when all three agree: the camera advertises the size for both `MediaCodec` and `SurfaceTexture` outputs, the encoder ladder can encode the exact width, height and rate, and an advertised AE target FPS range is keyed at that rate (upper bound equals the rate, so the capture rate can be locked; the most constrained matching range wins).
 
 Negotiation builds the ordered feasible-mode list for the selected camera (rear preferred, unchanged), picks the remembered mode when feasible, else walks 4K30 → 1080p60 → 1080p30 → the best remaining feasible mode ordered by highest resolution, then highest rate. This replaces `CameraGeometry.within1080` and the size-walking loop in `OfflineRecorderService.chooseCamera` with a pure, unit-testable `ModeMatrixPolicy`. The existing bounded startup retry and rejected-mode tracking keep protecting session failures. The mode chip always shows the actual negotiated mode.
 

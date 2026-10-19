@@ -67,6 +67,8 @@ Expected: one commit; `git status` shows a clean worktree.
 
 ### Task 1: VideoMode and ModeMatrixPolicy
 
+Execution note (reconciled during implementation, commits 305bf28 + bfb42bc): a range covers a rate only when its upper bound equals the rate; `aeRange` prefers `[rate, rate]` then the highest lower bound. The committed tests in the branch are authoritative over the reference test code below where they differ, and `fpsRangeCovers` delegates to `aeRange` as a single source of truth.
+
 **Files:**
 - Create: `app/src/main/java/app/stereobridge/VideoMode.java`
 - Create: `app/src/main/java/app/stereobridge/ModeMatrixPolicy.java`
@@ -276,8 +278,8 @@ public class VideoCapabilityPolicyTest {
   assertEquals(20_000_000, VideoCapabilityPolicy.bitrate(1920, 1080, 30, 0, 100_000_000));
  }
  @Test public void keepsUnmodeledSizesOnTheLegacyFormula() {
-  assertEquals(1_536_000, VideoCapabilityPolicy.bitrate(1280, 720, 30, 0, 8_000_000));
-  assertEquals(256_000, VideoCapabilityPolicy.bitrate(320, 240, 30, 0, 8_000_000));
+  assertEquals(3_456_000, VideoCapabilityPolicy.bitrate(1280, 720, 30, 0, 8_000_000));
+  assertEquals(288_000, VideoCapabilityPolicy.bitrate(320, 240, 30, 0, 8_000_000));
  }
  @Test public void clampsToEncoderRange() {
   assertEquals(20_000_000, VideoCapabilityPolicy.bitrate(3840, 2160, 30, 0, 20_000_000));
