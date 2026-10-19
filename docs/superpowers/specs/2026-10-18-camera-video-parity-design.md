@@ -63,6 +63,7 @@ Negotiation and session failures walk the bounded fallback chain with no loops. 
 - Physical evidence on Pixel 8 Pro (connected) and Pixel 6 when available:
   - capability probe dump recorded in documentation;
   - one take per offered mode, validated with an extended `verify-stereo-mp4.py` reporting codec, profile, resolution, fps and HDR flags alongside the existing stereo-distinctness, monotonic-timestamp and silent-window checks;
+  - non-Pixel Android 10+ device check when hardware is available: probe line, one legacy/compat take, and the same file checks; results recorded honestly whether passed or pending;
   - stabilization on/off shake comparison, owner-observed;
   - zoom and tap-focus sanity clips; HDR file plays on device;
   - black-box oracle round against Pixel Camera on the same scene, delta table recorded honestly;
