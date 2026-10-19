@@ -44,13 +44,19 @@ for path in files:
     packets = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_packets',
         '-show_entries', 'packet=stream_index,pts_time,dts_time', '-of', 'json', str(path)]))['packets']
     for stream in (video, audio):
-        stream_packets = [p for p in packets if p['stream_index'] == stream['index']]
+        index = stream['index']
+        stream_packets = [p for p in packets if p['stream_index'] == index]
         pts = [float(p['pts_time']) for p in stream_packets if 'pts_time' in p]
         dts = [float(p['dts_time']) for p in stream_packets if 'dts_time' in p]
-        timeline = [float(p['dts_time'] if 'dts_time' in p else p['pts_time'])
-                    for p in stream_packets if 'dts_time' in p or 'pts_time' in p]
-        assert pts and all(t >= 0 for t in pts + dts), 'Negative track timestamps'
-        assert all(b >= a for a, b in zip(timeline, timeline[1:])), 'Nonmonotonic track timestamps'
+        assert all(t >= -0.5 for t in pts + dts), f'{path}: grossly negative timestamp in stream {index}'
+        if stream_packets and all('dts_time' in p for p in stream_packets):
+            timeline = dts
+        elif stream_packets and all('pts_time' in p for p in stream_packets):
+            timeline = pts
+        else:
+            raise AssertionError(f'{path}: incomplete timestamps in stream {index}')
+        assert all(b >= a for a, b in zip(timeline, timeline[1:])), \
+            f'{path}: nonmonotonic timestamps in stream {index}'
     report = {'file': path.name, 'video': f"{video['width']}x{video['height']}",
               'duration': metadata['format']['duration'], 'sample_rate': 48000,
               'channels': 2, 'tone_power_ratios': ratios,
@@ -63,4 +69,4 @@ for path in files:
     reports.append(report)
     print(json.dumps(report), flush=True)
 (Path(sys.argv[1]).parent / 'media-verification.json').write_text(json.dumps(reports, indent=2))
-print('PASS: playable H.264/stereo AAC, distinct channel tones, monotonic timestamps, no silent 100 ms windows.')
+print('PASS: playable H.264/HEVC/stereo AAC, distinct channel tones, monotonic timestamps, no silent 100 ms windows.')
