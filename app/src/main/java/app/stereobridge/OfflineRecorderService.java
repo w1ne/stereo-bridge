@@ -259,11 +259,10 @@ public final class OfflineRecorderService extends Service {
       VideoMode candidate = VideoMode.fromKey(key);
       return candidate != null && feasibleModes.contains(candidate);
     }
-    public boolean hevcAvailable() {
-      for (VideoMode candidate : feasibleModes)
-        if (OfflineVideoEncoder.supportsVideo(candidate.width, candidate.height, candidate.rate, CodecPolicy.HEVC))
-          return true;
-      return false;
+    public boolean hevcAvailable(String modeKey) {
+      VideoMode candidate = VideoMode.fromKey(modeKey);
+      return candidate != null
+          && OfflineVideoEncoder.supportsVideo(candidate.width, candidate.height, candidate.rate, CodecPolicy.HEVC);
     }
     public void setZoom(float ratio) {
       cameraHandler.post(() -> {

@@ -22,6 +22,7 @@ final class CameraControls {
   private final GestureDetector gestures;
   private final ScaleGestureDetector scale;
   private float currentZoom = 1f;
+  private boolean scaling;
   private final Listener listener;
 
   CameraControls(Activity activity, FrameLayout frame, Ui ui, Listener listener) {
@@ -31,13 +32,19 @@ final class CameraControls {
     torchChip = chip(activity, ui, 13);
     flipChip = chip(activity, ui, 13);
     lockChip = chip(activity, ui, 13);
-    ring = new FocusRing(activity, ui.border, ui.accent);
+    flipChip.setText("Flip");
+    modeChip.setContentDescription("Video mode");
+    flipChip.setContentDescription("Switch camera");
+    torchChip.setContentDescription("Torch");
+    zoomChip.setContentDescription("Reset zoom");
+    lockChip.setContentDescription("Lock exposure and focus");
+    ring = new FocusRing(activity, ui.border, ui.accent, ui.dp(24), ui.dp(2));
     frame.addView(ring, new FrameLayout.LayoutParams(-1, -1));
-    addChip(frame, modeChip, Gravity.TOP | Gravity.START);
-    addChip(frame, flipChip, Gravity.TOP | Gravity.END);
-    addChip(frame, torchChip, Gravity.BOTTOM | Gravity.START);
-    addChip(frame, zoomChip, Gravity.BOTTOM | Gravity.END);
-    addChip(frame, lockChip, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+    addChip(frame, modeChip, Gravity.TOP | Gravity.START, ui);
+    addChip(frame, flipChip, Gravity.TOP | Gravity.END, ui);
+    addChip(frame, torchChip, Gravity.BOTTOM | Gravity.START, ui);
+    addChip(frame, zoomChip, Gravity.BOTTOM | Gravity.END, ui);
+    addChip(frame, lockChip, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, ui);
     modeChip.setOnClickListener(v -> listener.onMode());
     flipChip.setOnClickListener(v -> listener.onFlip());
     torchChip.setOnClickListener(v -> listener.onTorch());
@@ -77,8 +84,13 @@ final class CameraControls {
             });
     frame.setOnTouchListener(
         (v, event) -> {
+          if (event.getActionMasked() == MotionEvent.ACTION_DOWN) scaling = false;
           scale.onTouchEvent(event);
-          if (!scale.isInProgress()) gestures.onTouchEvent(event);
+          if (scale.isInProgress()) {
+            scaling = true;
+            return true;
+          }
+          if (!scaling) gestures.onTouchEvent(event);
           return true;
         });
   }
@@ -119,33 +131,36 @@ final class CameraControls {
     chip.setPadding(ui.dp(10), ui.dp(6), ui.dp(10), ui.dp(6));
     chip.setBackground(ui.shape(ui.dark ? 0xCC171F2B : 0xE6FFFFFF, 14, true));
     chip.setClickable(true);
+    chip.setMinHeight(ui.dp(40));
     return chip;
   }
 
-  private void addChip(FrameLayout frame, TextView chip, int gravity) {
+  private void addChip(FrameLayout frame, TextView chip, int gravity, Ui ui) {
     FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-2, -2, gravity);
-    params.setMargins(16, 16, 16, 16);
+    params.setMargins(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8));
     frame.addView(chip, params);
   }
 
   private static final class FocusRing extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final int border, accent;
+    private final float radius;
     private float x = -1, y = -1;
     boolean locked;
 
-    FocusRing(Activity activity, int border, int accent) {
+    FocusRing(Activity activity, int border, int accent, int radius, int stroke) {
       super(activity);
       this.border = border;
       this.accent = accent;
+      this.radius = radius;
       paint.setStyle(Paint.Style.STROKE);
-      paint.setStrokeWidth(4f);
+      paint.setStrokeWidth(stroke);
     }
 
     protected void onDraw(Canvas canvas) {
       if (x < 0) return;
       paint.setColor(locked ? accent : border);
-      canvas.drawCircle(x, y, 40f, paint);
+      canvas.drawCircle(x, y, radius, paint);
     }
 
     void show(float x, float y, boolean locked) {

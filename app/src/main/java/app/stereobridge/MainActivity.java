@@ -143,6 +143,7 @@ public final class MainActivity extends Activity {
                   Toast.makeText(MainActivity.this, "Stop before changing video mode", Toast.LENGTH_SHORT).show();
                   return;
                 }
+                controls.clearFocusRing();
                 ModeChooserDialog.show(
                     MainActivity.this,
                     ui,
