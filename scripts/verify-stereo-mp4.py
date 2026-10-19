@@ -15,7 +15,7 @@ for path in files:
         'ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)]))
     video = next(s for s in metadata['streams'] if s['codec_type'] == 'video')
     audio = next(s for s in metadata['streams'] if s['codec_type'] == 'audio')
-    assert video['codec_name'] == 'h264'
+    assert video['codec_name'] in ('h264', 'hevc'), f'{path}: unexpected codec {video["codec_name"]}'
     assert audio['codec_name'] == 'aac' and audio['channels'] == 2
     assert int(audio['sample_rate']) == 48000
     assert float(audio['duration']) >= 3 and float(video['duration']) >= 3
@@ -49,7 +49,13 @@ for path in files:
         assert pts and all(b >= a for a, b in zip(pts, pts[1:])), 'Nonmonotonic track timestamps'
     report = {'file': path.name, 'video': f"{video['width']}x{video['height']}",
               'duration': metadata['format']['duration'], 'sample_rate': 48000,
-              'channels': 2, 'tone_power_ratios': ratios}
+              'channels': 2, 'tone_power_ratios': ratios,
+              'codec': video['codec_name'],
+              'profile': video.get('profile'),
+              'pix_fmt': video.get('pix_fmt'),
+              'color_transfer': video.get('color_transfer'),
+              'hdr': video.get('color_transfer') == 'arib-std-b67',
+              'fps': video.get('avg_frame_rate')}
     reports.append(report)
     print(json.dumps(report), flush=True)
 (Path(sys.argv[1]).parent / 'media-verification.json').write_text(json.dumps(reports, indent=2))
