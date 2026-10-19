@@ -154,6 +154,7 @@ public final class OfflineRecorderService extends Service {
   private volatile List<VideoMode> feasibleModes = Collections.emptyList();
   private volatile String codecMime = CodecPolicy.AVC;
   private volatile boolean hdrActive;
+  private boolean hdrSessionFailed;
   private volatile CameraCapabilities capabilities = CameraCapabilities.NONE;
   private int stabMode = StabilizationPolicy.NONE;
   private volatile boolean oisOffered, zoomSupported, torchOn, focusLock;
@@ -426,6 +427,7 @@ public final class OfflineRecorderService extends Service {
       long epoch = 0;
       preparingCamera = true;
       rejectedModes.clear();
+      hdrSessionFailed = false;
       int captureDisplayDegrees = displayDegrees;
       for (int attempt = 0; attempt < StartupRetryPolicy.MAX_ATTEMPTS; attempt++) {
         startupCameraFailure = null;
@@ -968,6 +970,10 @@ public final class OfflineRecorderService extends Service {
       oisOffered = capabilities.opticalStabilization;
       zoomSupported = capabilities.zoom;
       android.util.Log.i("StereoRecorder", "Camera capabilities: " + capabilities.describe() + " mode=" + chosen.label());
+      hdrActive = !hdrSessionFailed
+          && settings.flag("video_hdr")
+          && HdrPolicy.offer(capabilities.hlgCamera, capabilities.hlgEncoder)
+          && HdrPolicy.allowedAtRate(chosen.rate);
       return;
     }
     throw new IOException("No camera and encoder share a supported video mode.");
@@ -1108,8 +1114,7 @@ public final class OfflineRecorderService extends Service {
               }
             }
           };
-      camera.createCaptureSession(
-          surfaces,
+      CameraCaptureSession.StateCallback stateCallback =
           new CameraCaptureSession.StateCallback() {
             public void onConfigured(CameraCaptureSession session) {
               if (version != configuration) {
@@ -1126,14 +1131,32 @@ public final class OfflineRecorderService extends Service {
 
             public void onConfigureFailed(CameraCaptureSession session) {
               session.close();
-              if (version == configuration) cameraFailure("Camera capture configuration failed.");
+              if (version != configuration) return;
+              if (hdrActive && target == null) {
+                hdrActive = false;
+                hdrSessionFailed = true;
+                android.util.Log.w("StereoRecorder", "HLG preview session rejected; using SDR");
+                configure();
+                return;
+              }
+              cameraFailure("Camera capture configuration failed.");
             }
 
             public void onClosed(CameraCaptureSession session) {
               releaseSession.run();
             }
-          },
-          cameraHandler);
+          };
+      if (hdrActive && Build.VERSION.SDK_INT >= 33 && target != null) {
+        List<OutputConfiguration> outputs = new ArrayList<>();
+        for (Surface surface : surfaces) {
+          OutputConfiguration output = new OutputConfiguration(surface);
+          output.setDynamicRangeProfile(DynamicRangeProfiles.HLG10);
+          outputs.add(output);
+        }
+        camera.createCaptureSessionByOutputConfigurations(outputs, stateCallback, cameraHandler);
+      } else {
+        camera.createCaptureSession(surfaces, stateCallback, cameraHandler);
+      }
     } catch (Exception e) {
       releaseSession.run();
       cameraFailure(message(e));
