@@ -830,6 +830,21 @@ public final class OfflineRecorderService extends Service {
     return null;
   }
 
+  private VideoMode compatCandidate(List<Size> recordSizes, List<Size> previewSizes, int[][] ranges) {
+    List<Size> sorted = new ArrayList<>(recordSizes);
+    sorted.sort((a, b) -> Long.compare((long) b.getWidth() * b.getHeight(), (long) a.getWidth() * a.getHeight()));
+    for (Size candidate : sorted) {
+      if (!ModeMatrixPolicy.compatSize(candidate.getWidth(), candidate.getHeight())) continue;
+      if (!previewSizes.contains(candidate)) continue;
+      int rate = ModeMatrixPolicy.compatRate(ranges);
+      if (rate == 0) continue;
+      VideoMode compat = VideoMode.of(candidate.getWidth(), candidate.getHeight(), rate);
+      if (firstSupportedCodec(compat) == null) continue;
+      return compat;
+    }
+    return null;
+  }
+
   private static int facingRank(CameraManager manager, String id, boolean wantFront) {
     try {
       Integer facing = manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
@@ -877,6 +892,10 @@ public final class OfflineRecorderService extends Service {
         if (firstSupportedCodec(candidate) == null) continue;
         feasible.add(candidate);
       }
+      if (feasible.isEmpty()) {
+        VideoMode compat = compatCandidate(recordList, previewList, ranges);
+        if (compat != null) feasible.add(compat);
+      }
       if (feasible.isEmpty()) continue;
       List<VideoMode> ordered = ModeMatrixPolicy.order(feasible, settings.get("video_mode", ""));
       VideoMode chosen = null;
@@ -898,6 +917,8 @@ public final class OfflineRecorderService extends Service {
       selectedMode = id + ":" + chosen.key() + ":" + chosenMime;
       size = new Size(chosen.width, chosen.height);
       int[] ae = ModeMatrixPolicy.aeRange(ranges, chosen.rate);
+      if (ae == null) ae = ModeMatrixPolicy.compatAeRange(ranges, chosen.rate);
+      if (ae == null) continue;
       fps = new Range<>(ae[0], ae[1]);
       frameRate = chosen.rate;
       if (previewTexture != null) previewTexture.setDefaultBufferSize(chosen.width, chosen.height);

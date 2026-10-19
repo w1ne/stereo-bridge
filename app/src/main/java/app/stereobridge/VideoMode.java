@@ -35,6 +35,11 @@ public final class VideoMode {
     return null;
   }
 
+  /** Compatibility mode for devices without a canonical matrix entry. */
+  static VideoMode of(int width, int height, int rate) {
+    return new VideoMode(width, height, rate, height + "p" + rate);
+  }
+
   @Override public boolean equals(Object other) {
     if (!(other instanceof VideoMode)) return false;
     VideoMode mode = (VideoMode) other;

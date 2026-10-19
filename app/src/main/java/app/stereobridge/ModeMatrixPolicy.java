@@ -42,4 +42,35 @@ final class ModeMatrixPolicy {
     }
     return best;
   }
+
+  /** Legacy camera size bound: up to 1920x1080 in either orientation. */
+  static boolean compatSize(int width, int height) {
+    return width > 0 && height > 0 && Math.max(width, height) <= 1920 && Math.min(width, height) <= 1080;
+  }
+
+  /** Legacy fallback rate: 30 when any advertised range contains it, else 24, else 0. */
+  static int compatRate(int[][] ranges) {
+    if (ranges == null) return 0;
+    if (contains(ranges, 30)) return 30;
+    if (contains(ranges, 24)) return 24;
+    return 0;
+  }
+
+  /** Containing range for legacy sizes: smallest upper bound, then highest lower bound. */
+  static int[] compatAeRange(int[][] ranges, int rate) {
+    if (ranges == null) return null;
+    int[] best = null;
+    for (int[] range : ranges) {
+      if (range == null || range.length != 2) continue;
+      if (rate < range[0] || rate > range[1]) continue;
+      if (best == null || range[1] < best[1] || (range[1] == best[1] && range[0] > best[0])) best = range;
+    }
+    return best;
+  }
+
+  private static boolean contains(int[][] ranges, int rate) {
+    for (int[] range : ranges)
+      if (range != null && range.length == 2 && rate >= range[0] && rate <= range[1]) return true;
+    return false;
+  }
 }

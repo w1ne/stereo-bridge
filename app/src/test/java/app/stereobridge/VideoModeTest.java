@@ -28,4 +28,11 @@ public class VideoModeTest {
  @Test public void canonicalLookupReturnsConstant() {
   assertSame(VideoMode.UHD30, VideoMode.fromKey("3840x2160@30"));
  }
+ @Test public void compatibilityModeIsNotCanonical() {
+  VideoMode compat = VideoMode.of(1280, 720, 30);
+  assertEquals("1280x720@30", compat.key());
+  assertEquals("720p30", compat.label());
+  assertEquals(VideoMode.of(1280, 720, 30), compat);
+  assertNull(VideoMode.fromKey("1280x720@30"));
+ }
 }

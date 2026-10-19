@@ -46,4 +46,25 @@ public class ModeMatrixPolicyTest {
   assertFalse(ModeMatrixPolicy.fpsRangeCovers(new int[][] {{30}}, 30));
   assertFalse(ModeMatrixPolicy.fpsRangeCovers(null, 30));
  }
+ @Test public void compatSizeAcceptsUpTo1080pEitherOrientation() {
+  assertTrue(ModeMatrixPolicy.compatSize(1920, 1080));
+  assertTrue(ModeMatrixPolicy.compatSize(1080, 1920));
+  assertTrue(ModeMatrixPolicy.compatSize(1280, 720));
+  assertFalse(ModeMatrixPolicy.compatSize(3840, 2160));
+  assertFalse(ModeMatrixPolicy.compatSize(2048, 1080));
+  assertFalse(ModeMatrixPolicy.compatSize(0, 0));
+ }
+ @Test public void compatRatePrefers30Then24() {
+  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{15, 30}}));
+  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{24, 30}}));
+  assertEquals(24, ModeMatrixPolicy.compatRate(new int[][] {{24, 24}, {60, 60}}));
+  assertEquals(0, ModeMatrixPolicy.compatRate(new int[][] {{60, 60}}));
+  assertEquals(0, ModeMatrixPolicy.compatRate(null));
+ }
+ @Test public void compatAeRangeFindsContainingRange() {
+  assertArrayEquals(new int[] {15, 30}, ModeMatrixPolicy.compatAeRange(new int[][] {{15, 30}}, 30));
+  assertArrayEquals(new int[] {24, 30}, ModeMatrixPolicy.compatAeRange(new int[][] {{24, 30}, {15, 30}}, 30));
+  assertNull(ModeMatrixPolicy.compatAeRange(new int[][] {{60, 60}}, 24));
+  assertNull(ModeMatrixPolicy.compatAeRange(null, 30));
+ }
 }
