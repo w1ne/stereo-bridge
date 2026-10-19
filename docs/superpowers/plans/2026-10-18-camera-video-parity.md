@@ -471,6 +471,8 @@ git commit -m "Add stabilization and zoom policies"
 
 ### Task 4: FocusPointMapper
 
+Execution note (reconciled during review, commit dd54299): the mapper inverts the full preview transform (center-crop scale + view-space front mirror) and exposes `activePoint(u, v, sensorOrientation)` for active-array conversion. It returns oriented preview space from `sensorPoint(viewX, viewY, viewWidth, viewHeight, bufferWidth, bufferHeight, sensorOrientation, displayDegrees, front)` and normalized active-array coordinates from `activePoint`. The reference code below is superseded by the committed implementation.
+
 **Files:**
 - Create: `app/src/main/java/app/stereobridge/FocusPointMapper.java`
 - Test: `app/src/test/java/app/stereobridge/FocusPointMapperTest.java`
@@ -1682,9 +1684,11 @@ Replace the local `FrameLayout previewFrame = new FrameLayout(this);` declaratio
                 if (recorder == null) return;
                 int[] info = recorder.previewInfo();
                 boolean front = info.length > 3 && info[3] == 1;
-                float[] point = FocusPointMapper.sensorPoint(
-                    x, y, preview.getWidth(), preview.getHeight(),
+                int sensor = info.length > 4 ? info[4] : 90;
+                float[] oriented = FocusPointMapper.sensorPoint(
+                    x, y, preview.getWidth(), preview.getHeight(), info[0], info[1], sensor,
                     getWindowManager().getDefaultDisplay().getRotation() * 90, front);
+                float[] point = FocusPointMapper.activePoint(oriented[0], oriented[1], sensor);
                 recorder.setFocusPoint(point[0], point[1]);
                 controls.showFocusRing(x, y, recorder.focusLocked());
               }
@@ -1910,7 +1914,7 @@ Owner records two 10-second handheld walking clips at 4K30: stabilization on (de
 
 - [ ] **Step 4: Zoom, tap-focus and flip sanity**
 
-Owner records: one pinch-zoomed clip, one tap-to-focus clip (ring appears, refocus visible), one flip to front and back. Expected: zoom chip shows the ratio; flip returns to rear and stays remembered after app restart.
+Owner records: one pinch-zoomed clip, one tap-to-focus clip (ring appears, refocus visible), one flip to front and back. Expected: zoom chip shows the ratio; flip returns to rear and stays remembered after app restart. Direction calibration: at portrait with the rear camera, tap the left-center and top-center of the preview; the refocus/ring should land on the tapped side. If the focus visibly lands mirrored or rotated instead, flip the corresponding `FocusPointMapper.activePoint` branch for that sensor orientation, commit that one-line change, and re-run this check.
 
 - [ ] **Step 5: Endurance take**
 
