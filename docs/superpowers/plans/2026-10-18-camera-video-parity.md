@@ -1274,6 +1274,8 @@ git commit -m "Apply stabilization and live camera controls at session level"
 
 ### Task 9: 10-bit HLG session path with single SDR fallback
 
+Execution note (reconciled during review, commits 2a669b7 + 9273191): on a recording-session HLG rejection, `hdrSessionFailed` is set, the rejection key is rewritten to the effective HEVC codec, and the bounded startup retry recreates an SDR encoder (AVC) in the same mode. Preview-only failures never disable HDR, and there is no internal SDR fallback branch.
+
 **Files:**
 - Modify: `app/src/main/java/app/stereobridge/OfflineRecorderService.java`
 
