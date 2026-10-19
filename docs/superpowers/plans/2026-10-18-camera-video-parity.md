@@ -561,6 +561,8 @@ git commit -m "Add tap-to-focus point mapping"
 
 ### Task 5: HdrPolicy, CodecPolicy, CameraCapabilities
 
+Execution note (reconciled during review, commits 9a322a7 + cc76f4d): `CodecPolicy.order` accepts both the persisted settings token (`"hevc"`) and the MIME constant (`"video/hevc"`), since the encoder layer passes MIMEs and the service passes settings values.
+
 **Files:**
 - Create: `app/src/main/java/app/stereobridge/HdrPolicy.java`, `app/src/main/java/app/stereobridge/CodecPolicy.java`, `app/src/main/java/app/stereobridge/CameraCapabilities.java`
 - Test: `app/src/test/java/app/stereobridge/HdrPolicyTest.java`, `app/src/test/java/app/stereobridge/CodecPolicyTest.java`, `app/src/test/java/app/stereobridge/CameraCapabilitiesTest.java`
