@@ -13,15 +13,19 @@ public class VideoModeTest {
   assertEquals(VideoMode.FHD30, VideoMode.FALLBACK.get(2));
   assertEquals(VideoMode.UHD60, VideoMode.FALLBACK.get(3));
  }
+ @Test public void listsAreUnmodifiable() {
+  assertThrows(UnsupportedOperationException.class, () -> VideoMode.ALL.add(VideoMode.UHD60));
+  assertThrows(UnsupportedOperationException.class, () -> VideoMode.FALLBACK.add(VideoMode.UHD60));
+ }
  @Test public void roundTripsKeysAndLabels() {
   assertEquals("3840x2160@30", VideoMode.UHD30.key());
   assertEquals("4K30", VideoMode.UHD30.label());
   assertEquals(VideoMode.UHD60, VideoMode.fromKey("3840x2160@60"));
+  assertNull(VideoMode.fromKey(null));
   assertNull(VideoMode.fromKey("9999x9999@24"));
   assertNull(VideoMode.fromKey(""));
  }
- @Test public void equalsIgnoresInstance() {
-  assertEquals(VideoMode.fromKey(VideoMode.FHD30.key()), VideoMode.FHD30);
-  assertNotEquals(VideoMode.FHD30, VideoMode.FHD60);
+ @Test public void canonicalLookupReturnsConstant() {
+  assertSame(VideoMode.UHD30, VideoMode.fromKey("3840x2160@30"));
  }
 }

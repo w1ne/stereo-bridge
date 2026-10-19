@@ -4,7 +4,12 @@ import java.util.*;
 
 /** Pure negotiation ordering and AE range selection. */
 final class ModeMatrixPolicy {
-  /** Feasible modes in fallback order; the remembered mode first when feasible. */
+  /**
+   * Feasible modes in fallback order; the remembered mode first when feasible.
+   *
+   * <p>The caller passes {@code feasible} in {@link VideoMode#FALLBACK} order. This method
+   * preserves that input order, only promoting a feasible remembered mode to the front.
+   */
   static List<VideoMode> order(List<VideoMode> feasible, String rememberedKey) {
     List<VideoMode> ordered = new ArrayList<>();
     VideoMode remembered = VideoMode.fromKey(rememberedKey);
@@ -13,21 +18,27 @@ final class ModeMatrixPolicy {
     return ordered;
   }
 
-  /** Advertised AE ranges as {lower, upper} pairs; true when any is capped at the rate. */
+  /** Advertised AE ranges as {lower, upper} pairs; true when {@link #aeRange} selects one. */
   static boolean fpsRangeCovers(int[][] ranges, int rate) {
-    if (ranges == null) return false;
-    for (int[] range : ranges)
-      if (range != null && range.length == 2 && range[1] == rate) return true;
-    return false;
+    return aeRange(ranges, rate) != null;
   }
 
-  /** The advertised range capped at the rate, preferring [rate, rate]; null when none. */
+  /**
+   * The advertised range capped at the rate, preferring [rate, rate]; null when none.
+   *
+   * <p>Among ranges whose upper bound equals the rate, the highest lower bound (the most
+   * constrained, closest to a fixed rate) wins; ties keep the first encountered. Malformed
+   * entries are skipped: null, length other than 2, or upper below lower. This selection is
+   * the single source of truth for {@link #fpsRangeCovers}.
+   */
   static int[] aeRange(int[][] ranges, int rate) {
     if (ranges == null) return null;
     int[] best = null;
     for (int[] range : ranges) {
-      if (range == null || range.length != 2 || range[1] != rate) continue;
-      if (best == null || (range[0] == rate && best[0] != rate)) best = range;
+      if (range == null || range.length != 2) continue;
+      int lower = range[0], upper = range[1];
+      if (upper < lower || upper != rate) continue;
+      if (best == null || (best[0] != rate && (lower == rate || lower > best[0]))) best = range;
     }
     return best;
   }
