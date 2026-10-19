@@ -8,7 +8,7 @@
 | CPU | ARM32, ARM64, x86_64 native codec builds |
 | Camera | Camera2; negotiated modes 4K30 (default), 4K60, 1080p60, 1080p30; session-level video stabilization and OIS when advertised; tap-focus, zoom and torch when advertised; 10-bit HLG HDR only where camera and encoder both support it (30 fps modes only); OIS is used when video stabilization is unavailable; 10-bit HDR requires Android 13+ |
 | Microphones | Two original DJI Mic Mini transmitters paired through classic Bluetooth |
-| Physical checks | Pixel 8 Pro (connected 2026-10-18), Pixel 6 / Android 15; version-scoped results in [verification](offline-verification.md) |
+| Physical checks | Pixel 8 Pro (connected 2026-10-18; camera parity physical checks pending), Pixel 6 / Android 15; version-scoped results in [verification](offline-verification.md) |
 
 Rear camera, autofocus and a built-in microphone are optional. The app queries camera/encoder capabilities and tries smaller startup modes or another camera when needed. This does not prove every phone works.
 
