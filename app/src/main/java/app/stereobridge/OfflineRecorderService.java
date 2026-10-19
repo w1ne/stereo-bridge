@@ -1042,7 +1042,7 @@ public final class OfflineRecorderService extends Service {
     }
     if (torchOn) request.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
     if (zoomSupported && appliedZoom != 1f) {
-      if (zoomRatioSupported) request.set(CaptureRequest.CONTROL_ZOOM_RATIO, appliedZoom);
+      if (zoomRatioSupported && Build.VERSION.SDK_INT >= 30) request.set(CaptureRequest.CONTROL_ZOOM_RATIO, appliedZoom);
       else if (appliedZoom > 1f && activeArray != null) {
         float[] region = ZoomPolicy.cropRegion(appliedZoom, activeArray.width(), activeArray.height());
         request.set(CaptureRequest.SCALER_CROP_REGION, new android.graphics.Rect(
