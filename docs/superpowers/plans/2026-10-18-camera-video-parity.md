@@ -1968,7 +1968,9 @@ gh pr view --json url,mergeStateStatus
 
 Record the PR URL and CI result in `docs/offline-verification.md`.
 
-- [ ] **Step 4: Merge after checks pass (per standing user instruction)**
+- [ ] **Step 4: Present everything and wait for explicit approval, then merge**
+
+Present the PR URL, diff summary, CI results and physical-validation status. Standing instruction (2026-10-19): show everything before merging and never auto-merge or push to main without explicit user approval. Only after approval:
 
 ```bash
 gh pr merge --squash --delete-branch
