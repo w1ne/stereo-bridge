@@ -48,7 +48,9 @@ All capture controls live in one base request builder shared by preview-only and
 
 ## UI surface
 
-The one-button core (Record/Stop, meters, gain/mute/swap) is unchanged. Additions: tap-to-focus with lock control, pinch zoom with a chip, double-tap and chip camera flip, torch icon, and a mode chip opening a bottom sheet with the four modes, the 10-bit HDR toggle and the codec choice. Controls whose capability keys are absent are hidden, never dead. Persistence covers mode, HDR, codec and facing; zoom resets per session.
+The one-button core (Record/Stop, meters, gain/mute/swap) is unchanged. The main screen is camera-first and full screen: the preview fills the display edge-to-edge using the existing center-crop transform, with the mode/flip/torch/zoom/lock chips floating over the image, the live left/right microphone labels and meters plus the Record/Stop control in a translucent bottom panel, and session status and timer at the top. Secondary actions (advanced microphone controls, pairing, notification and permission settings, privacy policy) live behind a small overflow control; Open last video stays one tap away. Layout respects display cutouts and system-bar insets, and recording behavior (background/screen-off) is unchanged.
+
+Additions: tap-to-focus with lock control, pinch zoom with a chip, double-tap and chip camera flip, torch icon, and a mode chip opening a bottom sheet with the four modes, the 10-bit HDR toggle and the codec choice. Controls whose capability keys are absent are hidden, never dead. Persistence covers mode, HDR, codec and facing; zoom resets per session.
 
 Gesture mapping, zoom clamping, focus-point mapping and HDR/codec enablement rules live in pure classes with unit tests; the view layer stays thin.
 

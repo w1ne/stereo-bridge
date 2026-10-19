@@ -1991,3 +1991,29 @@ Open the next spec for the podcast pass when ready: audio-only L/R WAV export, e
 - Audio pipeline, journal, muxer, storage policy, permissions: intentionally untouched.
 - Type consistency check: `VideoMode`, `ModeMatrixPolicy`, `StabilizationPolicy.NONE`, `CameraCapabilities`, `CodecPolicy.AVC/HEVC`, `HdrPolicy.offer/allowedAtRate`, `FocusPointMapper.sensorPoint`, `ZoomPolicy.clamp/cropRegion` are used with identical signatures across tasks.
 
+
+---
+
+### Task 15: Camera-first full-screen UI with overlaid mic data
+
+**Files:**
+- Modify: `app/src/main/java/app/stereobridge/MainActivity.java`
+- Modify: `app/src/main/java/app/stereobridge/CameraControls.java`
+
+Owner request (2026-10-19): the fixed 120/250 dp preview is too small; the camera view must be full screen and mic data must appear on the camera screen.
+
+- [ ] **Step 1: Rebuild the screen as an overlay stack**
+
+Root FrameLayout filling the display: `previewFrame` (match_parent, black) with the TextureView; `CameraControls` chips/ring inside it; then overlay containers added after it — a top status bar (status text, timer, title) and a bottom panel (mic rows with labels + meters, Record/Stop, one-line hint, and a visible "Open last video" control). Secondary actions (Advanced controls, pairing, notification settings, permission settings, Privacy policy) move behind a small "More" control that opens a dialog rebuilt on demand from current settings; remove those views from the main layout and from the per-tick refresh (visibility decided when the dialog is built). Keep the exact texts "Record", "Stop", "Recording stereo video", "Video saved to Movies / Stereo Bridge" and "Open last video" visible for the emulator smoke.
+
+- [ ] **Step 2: Respect insets and keep the preview edge-to-edge**
+
+Do not pad the root; apply the display-cutout/system-bar top inset to the top bar and the bottom inset (plus 12 dp) to the bottom panel, and give chips top/bottom margins that clear them. The preview keeps `CameraGeometry.previewCorners` center-crop filling the screen.
+
+- [ ] **Step 3: Move camera chips clear of the bottom panel**
+
+In `CameraControls`, lay out: mode chip top-start; flip and torch in one top-end row; lock chip bottom-start above the bottom panel; zoom chip bottom-end above it. Use `ui.dp` values and keep the existing tap/pinch/lock behavior unchanged.
+
+- [ ] **Step 4: Verify**
+
+`ANDROID_HOME=/home/andrii/Android/Sdk ./gradlew testDebugUnitTest lintRelease assembleDebug` green (143 tests, 0 lint errors); hosted CI emulator smoke must still find the preserved texts. Install `app-debug.apk` on the connected Pixel and capture a screenshot confirming the edge-to-edge preview and overlaid mic meters. Commit with message: `Make the camera screen full screen with overlay controls`.
