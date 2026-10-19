@@ -278,6 +278,22 @@ public final class OfflineRecorderService extends Service {
         cameraHandler.removeCallbacks(focusRevert);
         if (!focusLock) cameraHandler.postDelayed(focusRevert, 4000);
         applyControls();
+        if (!focusLock && autoAf) {
+          CameraCaptureSession session = cameraSession;
+          if (session != null) {
+            try {
+              CaptureRequest.Builder trigger =
+                  baseRequest(sessionRecording ? CameraDevice.TEMPLATE_RECORD : CameraDevice.TEMPLATE_PREVIEW);
+              for (Surface surface : sessionSurfaces) trigger.addTarget(surface);
+              trigger.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+              session.capture(trigger.build(), null, cameraHandler);
+              trigger.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+              applyControls();
+            } catch (Exception e) {
+              android.util.Log.w("StereoRecorder", "AF trigger failed", e);
+            }
+          }
+        }
       });
     }
     public void setFocusLock(boolean locked) {
@@ -462,6 +478,10 @@ public final class OfflineRecorderService extends Service {
           break;
         } catch (IOException startup) {
           checkActive();
+          if (hdrActive) {
+            hdrSessionFailed = true;
+            android.util.Log.w("StereoRecorder", "HDR startup failed; retrying as SDR");
+          }
           // Stop camera production before releasing its encoder surface or storage FD.
           drainCameraForRetry();
           if (current != null) {

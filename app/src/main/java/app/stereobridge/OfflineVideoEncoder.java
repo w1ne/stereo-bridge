@@ -113,10 +113,6 @@ public final class OfflineVideoEncoder {
     } catch (IllegalArgumentException e) { return null; }
   }
 
-  static boolean supportsVideo(int width, int height, int rate) {
-    return supportsVideo(width, height, rate, CodecPolicy.AVC);
-  }
-
   static boolean supportsVideo(int width, int height, int rate, String mime) {
     for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
       if (info.isEncoder() && videoFormat(info, mime, width, height, rate, false) != null) return true;

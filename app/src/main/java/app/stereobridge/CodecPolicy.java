@@ -7,5 +7,4 @@ final class CodecPolicy {
     boolean hevc = "hevc".equals(requested) || HEVC.equals(requested);
     return hevc ? new String[] {HEVC, AVC} : new String[] {AVC};
   }
-  static String label(String mime) { return HEVC.equals(mime) ? "HEVC" : "AVC"; }
 }

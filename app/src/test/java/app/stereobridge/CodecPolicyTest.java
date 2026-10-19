@@ -10,8 +10,4 @@ public class CodecPolicyTest {
   assertArrayEquals(new String[] {"video/hevc", "video/avc"}, CodecPolicy.order("hevc"));
   assertArrayEquals(new String[] {"video/hevc", "video/avc"}, CodecPolicy.order(CodecPolicy.HEVC));
  }
- @Test public void labelsAreHumanReadable() {
-  assertEquals("AVC", CodecPolicy.label("video/avc"));
-  assertEquals("HEVC", CodecPolicy.label("video/hevc"));
- }
 }
