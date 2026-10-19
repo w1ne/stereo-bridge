@@ -7,6 +7,10 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.*;
+import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.params.DynamicRangeProfiles;
+import android.hardware.camera2.params.MeteringRectangle;
+import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.MediaCodec;
 import android.net.Uri;
@@ -150,6 +154,16 @@ public final class OfflineRecorderService extends Service {
   private volatile List<VideoMode> feasibleModes = Collections.emptyList();
   private volatile String codecMime = CodecPolicy.AVC;
   private volatile boolean hdrActive;
+  private volatile CameraCapabilities capabilities = CameraCapabilities.NONE;
+  private int stabMode = StabilizationPolicy.NONE;
+  private volatile boolean oisOffered, zoomSupported, torchOn, focusLock;
+  private volatile float zoomRatio = 1f;
+  private float[] focusPoint;
+  private android.graphics.Rect activeArray;
+  private List<Surface> sessionSurfaces = Collections.emptyList();
+  private boolean sessionRecording;
+  private CameraCaptureSession.CaptureCallback sessionCallback;
+  private Runnable focusRevert;
 
   private boolean realtimeSensor;
   private OfflineVideoEncoder encoder;
@@ -228,6 +242,88 @@ public final class OfflineRecorderService extends Service {
               });
       if (!posted && releaseTexture) requestTextureDestruction(texture);
     }
+
+    public CameraCapabilities capabilities() { return capabilities; }
+    public String modeLabel() {
+      VideoMode current = mode;
+      return current == null ? "" : current.label() + (hdrActive ? " · HDR" : "");
+    }
+    public float zoom() { return zoomRatio; }
+    public boolean torch() { return torchOn; }
+    public boolean focusLocked() { return focusLock; }
+    public boolean modeFeasible(String key) {
+      VideoMode candidate = VideoMode.fromKey(key);
+      return candidate != null && feasibleModes.contains(candidate);
+    }
+    public void setZoom(float ratio) {
+      cameraHandler.post(() -> {
+        if (!zoomSupported) return;
+        zoomRatio = ZoomPolicy.clamp(ratio, capabilities.zoomMin, Math.min(capabilities.zoomMax, 8f));
+        applyControls();
+      });
+    }
+    public void setFocusPoint(float nx, float ny) {
+      cameraHandler.post(() -> {
+        if (capabilities.maxAfRegions <= 0) return;
+        focusPoint = new float[] {nx, ny};
+        cameraHandler.removeCallbacks(focusRevert);
+        if (!focusLock) cameraHandler.postDelayed(focusRevert, 4000);
+        applyControls();
+      });
+    }
+    public void setFocusLock(boolean locked) {
+      cameraHandler.post(() -> {
+        focusLock = locked;
+        cameraHandler.removeCallbacks(focusRevert);
+        if (locked && focusPoint == null) focusPoint = new float[] {0.5f, 0.5f};
+        if (!locked) focusPoint = null;
+        applyControls();
+      });
+    }
+    public void setTorch(boolean on) {
+      cameraHandler.post(() -> {
+        if (!capabilities.flash) return;
+        torchOn = on;
+        applyControls();
+      });
+    }
+    public void flip() {
+      cameraHandler.post(() -> {
+        if (worker != null) return;
+        settings.set("facing", frontFacing ? "back" : "front");
+        cameraId = null;
+        zoomRatio = 1f;
+        focusPoint = null;
+        focusLock = false;
+        torchOn = false;
+        try {
+          drainCameraForRetry();
+        } catch (Exception e) {
+          cameraFailure(message(e));
+          return;
+        }
+        ensureCamera();
+      });
+    }
+    public void requestMode(String modeKey, boolean hdr, String codec) {
+      cameraHandler.post(() -> {
+        if (worker != null) return;
+        settings.set("video_mode", modeKey);
+        settings.flag("video_hdr", hdr);
+        settings.set("video_codec", codec);
+        cameraId = null;
+        zoomRatio = 1f;
+        focusPoint = null;
+        focusLock = false;
+        try {
+          drainCameraForRetry();
+        } catch (Exception e) {
+          cameraFailure(message(e));
+          return;
+        }
+        ensureCamera();
+      });
+    }
   }
 
   @Override
@@ -246,6 +342,12 @@ public final class OfflineRecorderService extends Service {
     cameraThread = new HandlerThread("offline-camera");
     cameraThread.start();
     cameraHandler = new Handler(cameraThread.getLooper());
+    focusRevert = () -> {
+      if (!focusLock) {
+        focusPoint = null;
+        applyControls();
+      }
+    };
     NotificationManager nm = getSystemService(NotificationManager.class);
     nm.createNotificationChannel(
         new NotificationChannel(
@@ -513,6 +615,12 @@ public final class OfflineRecorderService extends Service {
   }
 
   private void drainCameraForRetry() throws IOException, InterruptedException {
+    if (Looper.myLooper() == cameraHandler.getLooper()) {
+      encoder = null;
+      closeCamera();
+      completeCameraCleanup();
+      return;
+    }
     CountDownLatch closed = new CountDownLatch(1);
     cameraHandler.post(() -> {
       cameraCleanup = closed;
@@ -790,9 +898,102 @@ public final class OfflineRecorderService extends Service {
       frontFacing = Objects.equals(c.get(CameraCharacteristics.LENS_FACING), CameraCharacteristics.LENS_FACING_FRONT);
       rotation = CameraGeometry.rotation(sensorOrientation, displayDegrees, frontFacing);
       realtimeSensor = Objects.equals(c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
+      activeArray = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+      int[] stabilizationModes = c.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
+      int[] opticalModes = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
+      android.util.Range<Float> zoomRange =
+          Build.VERSION.SDK_INT >= 30 ? c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) : null;
+      Float maxDigitalZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+      boolean zoomAvailable = zoomRange != null
+          || (activeArray != null && maxDigitalZoom != null && maxDigitalZoom > 1.05f);
+      float zoomMin = zoomRange != null ? zoomRange.getLower() : 1f;
+      float zoomMax = zoomRange != null
+          ? zoomRange.getUpper()
+          : (maxDigitalZoom == null ? 1f : Math.min(maxDigitalZoom, 8f));
+      Integer afRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
+      capabilities = new CameraCapabilities(
+          StabilizationPolicy.videoStabilization(stabilizationModes),
+          StabilizationPolicy.opticalStabilization(opticalModes),
+          Boolean.TRUE.equals(c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE)),
+          zoomAvailable,
+          zoomMin,
+          zoomMax,
+          afRegions == null ? 0 : afRegions,
+          hlgCamera(c),
+          OfflineVideoEncoder.supportsHlgEncode(chosen.width, chosen.height, chosen.rate));
+      stabMode = capabilities.stabilizationMode;
+      oisOffered = capabilities.opticalStabilization;
+      zoomSupported = capabilities.zoom;
+      android.util.Log.i("StereoRecorder", "Camera capabilities: " + capabilities.describe() + " mode=" + chosen.label());
       return;
     }
     throw new IOException("No camera and encoder share a supported video mode.");
+  }
+
+  private static boolean hlgCamera(CameraCharacteristics c) {
+    if (Build.VERSION.SDK_INT < 33) return false;
+    int[] abilities = c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+    boolean tenBit = false;
+    if (abilities != null)
+      for (int ability : abilities)
+        if (ability == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_DYNAMIC_RANGE_TEN_BIT) tenBit = true;
+    if (!tenBit) return false;
+    DynamicRangeProfiles profiles =
+        c.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES);
+    return profiles != null && profiles.getSupportedProfiles().contains(DynamicRangeProfiles.HLG10);
+  }
+
+  private CaptureRequest.Builder baseRequest(int template) throws CameraAccessException {
+    CaptureRequest.Builder request = camera.createCaptureRequest(template);
+    request.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+    if (fps != null) request.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fps);
+    if (stabMode != StabilizationPolicy.NONE)
+      request.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, stabMode);
+    // Explicit OIS only when EIS is unavailable: an EIS request already engages the HAL's fused
+    // OIS+EIS on Pixel-class devices, and AOSP warns against explicitly combining both.
+    if (oisOffered && stabMode == StabilizationPolicy.NONE)
+      request.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
+    request.set(CaptureRequest.CONTROL_AF_MODE,
+        focusLock ? CaptureRequest.CONTROL_AF_MODE_AUTO : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+    if (focusPoint != null && activeArray != null && capabilities.maxAfRegions > 0) {
+      android.util.Size regionSize =
+          new android.util.Size(Math.max(1, activeArray.width() / 10), Math.max(1, activeArray.height() / 10));
+      int left = Math.round(focusPoint[0] * activeArray.width()) - regionSize.getWidth() / 2;
+      int top = Math.round(focusPoint[1] * activeArray.height()) - regionSize.getHeight() / 2;
+      left = Math.max(activeArray.left, Math.min(activeArray.right - regionSize.getWidth(), left));
+      top = Math.max(activeArray.top, Math.min(activeArray.bottom - regionSize.getHeight(), top));
+      MeteringRectangle rect = new MeteringRectangle(
+          left, top, regionSize.getWidth(), regionSize.getHeight(), MeteringRectangle.METERING_WEIGHT_MAX);
+      request.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[] {rect});
+      request.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[] {rect});
+    }
+    if (focusLock) {
+      request.set(CaptureRequest.CONTROL_AE_LOCK, true);
+      request.set(CaptureRequest.CONTROL_AWB_LOCK, true);
+    }
+    if (torchOn) request.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
+    if (zoomRatio > 1f && zoomSupported) {
+      if (Build.VERSION.SDK_INT >= 30) request.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoomRatio);
+      else if (activeArray != null) {
+        float[] region = ZoomPolicy.cropRegion(zoomRatio, activeArray.width(), activeArray.height());
+        request.set(CaptureRequest.SCALER_CROP_REGION, new android.graphics.Rect(
+            Math.round(region[0]), Math.round(region[1]), Math.round(region[2]), Math.round(region[3])));
+      }
+    }
+    return request;
+  }
+
+  private void applyControls() {
+    CameraCaptureSession session = cameraSession;
+    if (session == null || camera == null || sessionCallback == null) return;
+    try {
+      CaptureRequest.Builder request =
+          baseRequest(sessionRecording ? CameraDevice.TEMPLATE_RECORD : CameraDevice.TEMPLATE_PREVIEW);
+      for (Surface surface : sessionSurfaces) request.addTarget(surface);
+      session.setRepeatingRequest(request.build(), sessionCallback, cameraHandler);
+    } catch (Exception ignored) {
+      // Live control updates are best effort; the base session remains valid.
+    }
   }
 
   private void configure() {
@@ -832,11 +1033,25 @@ public final class OfflineRecorderService extends Service {
         };
     try {
       CaptureRequest.Builder request =
-          camera.createCaptureRequest(
-              target == null ? CameraDevice.TEMPLATE_PREVIEW : CameraDevice.TEMPLATE_RECORD);
+          baseRequest(target == null ? CameraDevice.TEMPLATE_PREVIEW : CameraDevice.TEMPLATE_RECORD);
       for (Surface s : surfaces) request.addTarget(s);
-      request.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-      if (fps != null) request.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fps);
+      sessionSurfaces = new ArrayList<>(surfaces);
+      sessionRecording = target != null;
+      sessionCallback =
+          new CameraCaptureSession.CaptureCallback() {
+            boolean first = true;
+
+            @Override
+            public void onCaptureStarted(
+                CameraCaptureSession s, CaptureRequest req, long timestamp, long frame) {
+              if (first && target != null) {
+                first = false;
+                target.videoStarted(
+                    realtimeSensor ? timestamp : SystemClock.elapsedRealtimeNanos());
+                if (cameraReady != null) cameraReady.countDown();
+              }
+            }
+          };
       camera.createCaptureSession(
           surfaces,
           new CameraCaptureSession.StateCallback() {
@@ -847,23 +1062,7 @@ public final class OfflineRecorderService extends Service {
               }
               cameraSession = session;
               try {
-                session.setRepeatingRequest(
-                    request.build(),
-                    new CameraCaptureSession.CaptureCallback() {
-                      boolean first = true;
-
-                      @Override
-                      public void onCaptureStarted(
-                          CameraCaptureSession s, CaptureRequest req, long timestamp, long frame) {
-                        if (first && target != null) {
-                          first = false;
-                          target.videoStarted(
-                              realtimeSensor ? timestamp : SystemClock.elapsedRealtimeNanos());
-                          if (cameraReady != null) cameraReady.countDown();
-                        }
-                      }
-                    },
-                    cameraHandler);
+                session.setRepeatingRequest(request.build(), sessionCallback, cameraHandler);
               } catch (Exception e) {
                 cameraFailure(message(e));
               }
@@ -897,6 +1096,7 @@ public final class OfflineRecorderService extends Service {
       cameraSession.close();
       cameraSession = null;
     }
+    torchOn = false;
     if (camera != null) {
       CameraDevice old = camera;
       camera = null;
