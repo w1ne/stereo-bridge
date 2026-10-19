@@ -22,6 +22,8 @@ public final class MainActivity extends Activity {
   private SurfaceTexture texture;
   private OfflineRecorderService.LocalBinder recorder, previewOwner;
   private boolean bound, resumed, pendingRecord, expanded, permissionRequestInFlight;
+  private CameraControls controls;
+  private FrameLayout previewFrame;
   private TextView status, leftLabel, rightLabel, timer;
   private Button record, advancedButton, last, permissionSettings, notificationSettings;
   private TextView notificationHint;
@@ -68,7 +70,7 @@ public final class MainActivity extends Activity {
     ui.space(root, 16);
     preview = new TextureView(this);
     preview.setOpaque(true);
-    FrameLayout previewFrame = new FrameLayout(this);
+    previewFrame = new FrameLayout(this);
     previewFrame.setBackgroundColor(Color.BLACK);
     previewFrame.addView(preview, new FrameLayout.LayoutParams(-1, -1));
     root.addView(previewFrame, new LinearLayout.LayoutParams(-1, ui.dp(landscape ? 120 : 250)));
@@ -94,6 +96,65 @@ public final class MainActivity extends Activity {
 
           public void onSurfaceTextureUpdated(SurfaceTexture t) {}
         });
+    controls =
+        new CameraControls(
+            this,
+            previewFrame,
+            ui,
+            new CameraControls.Listener() {
+              public void onTap(float x, float y) {
+                if (recorder == null) return;
+                int[] info = recorder.previewInfo();
+                boolean front = info.length > 3 && info[3] == 1;
+                int sensor = info.length > 4 ? info[4] : 90;
+                float[] oriented = FocusPointMapper.sensorPoint(
+                    x, y, preview.getWidth(), preview.getHeight(), info[0], info[1], sensor,
+                    getWindowManager().getDefaultDisplay().getRotation() * 90, front);
+                float[] point = FocusPointMapper.activePoint(oriented[0], oriented[1], sensor);
+                recorder.setFocusPoint(point[0], point[1]);
+                controls.showFocusRing(x, y, recorder.focusLocked());
+              }
+
+              public void onZoom(float ratio) {
+                if (recorder != null) recorder.setZoom(ratio);
+              }
+
+              public void onFlip() {
+                if (recorder == null) return;
+                if (OfflineRecorderService.state.busy()) {
+                  Toast.makeText(MainActivity.this, "Stop before switching camera", Toast.LENGTH_SHORT).show();
+                  return;
+                }
+                controls.clearFocusRing();
+                recorder.flip();
+              }
+
+              public void onTorch() {
+                if (recorder != null) recorder.setTorch(!recorder.torch());
+              }
+
+              public void onLock() {
+                if (recorder != null) recorder.setFocusLock(!recorder.focusLocked());
+              }
+
+              public void onMode() {
+                if (recorder == null) return;
+                if (OfflineRecorderService.state.busy()) {
+                  Toast.makeText(MainActivity.this, "Stop before changing video mode", Toast.LENGTH_SHORT).show();
+                  return;
+                }
+                ModeChooserDialog.show(
+                    MainActivity.this,
+                    ui,
+                    recorder.capabilities(),
+                    settings.get("video_mode", ""),
+                    settings.flag("video_hdr"),
+                    settings.get("video_codec", "avc"),
+                    recorder::modeFeasible,
+                    recorder::hevcAvailable,
+                    (modeKey, hdr, codec) -> recorder.requestMode(modeKey, hdr, codec));
+              }
+            });
     ui.space(root, 12);
     status = ui.text("Ready to record", 18, true);
     footer.addView(status);
@@ -491,6 +552,10 @@ public final class MainActivity extends Activity {
         s.phase() == OfflineSessionState.Phase.RECORDING
             ? String.format(Locale.ROOT, "%02d:%02d · Stereo recording", seconds / 60, seconds % 60)
             : "");
+    boolean idle = !s.busy();
+    if (recorder != null)
+      controls.refresh(recorder.capabilities(), recorder.modeLabel(), recorder.zoom(), recorder.torch(), idle, recorder.focusLocked());
+    else controls.refresh(null, "", 1f, false, idle, false);
     boolean denied = checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
         || !bluetoothGranted();
     permissionSettings.setVisibility(denied ? View.VISIBLE : View.GONE);
