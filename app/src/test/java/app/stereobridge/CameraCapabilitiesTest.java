@@ -9,6 +9,7 @@ public class CameraCapabilitiesTest {
   assertEquals(1f, none.zoomMin, 0f);
   assertEquals(1f, none.zoomMax, 0f);
   assertEquals(0, none.maxAfRegions);
+  assertTrue(CameraCapabilities.NONE.describe().contains("zoom=off"));
  }
  @Test public void describesEveryField() {
   CameraCapabilities caps = new CameraCapabilities(2, true, true, true, 1f, 8f, 3, true, true);
