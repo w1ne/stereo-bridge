@@ -19,6 +19,7 @@ final class ModeChooserDialog {
       boolean currentHdr,
       String currentCodec,
       Predicate<String> modeFeasible,
+      Predicate<String> hdrAvailable,
       Predicate<String> hevcAvailable,
       Listener listener) {
     LinearLayout root = new LinearLayout(activity);
@@ -39,7 +40,6 @@ final class ModeChooserDialog {
     RadioButton hevc = new RadioButton(activity);
     ui.controls(hevc);
 
-    boolean hdrOffered = HdrPolicy.offer(caps.hlgCamera, caps.hlgEncoder);
     java.util.List<RadioButton> buttons = new java.util.ArrayList<>();
     int firstFeasible = -1, remembered = -1;
     for (int index = 0; index < VideoMode.ALL.size(); index++) {
@@ -57,7 +57,7 @@ final class ModeChooserDialog {
         selectedIndex[0] = indexFinal;
         selectedRate[0] = mode.rate;
         selectedModeKey[0] = mode.key();
-        boolean allowed = hdrOffered && HdrPolicy.allowedAtRate(selectedRate[0]);
+        boolean allowed = hdrAvailable.test(mode.key());
         hdr.setEnabled(allowed);
         if (!allowed) hdr.setChecked(false);
         hdrHint.setVisibility(allowed ? android.view.View.GONE : android.view.View.VISIBLE);

@@ -264,6 +264,13 @@ public final class OfflineRecorderService extends Service {
       return candidate != null
           && OfflineVideoEncoder.supportsVideo(candidate.width, candidate.height, candidate.rate, CodecPolicy.HEVC);
     }
+    public boolean hdrAvailable(String modeKey) {
+      VideoMode candidate = VideoMode.fromKey(modeKey);
+      return capabilities.hlgCamera
+          && candidate != null
+          && HdrPolicy.allowedAtRate(candidate.rate)
+          && OfflineVideoEncoder.supportsHlgEncode(candidate.width, candidate.height, candidate.rate);
+    }
     public void setZoom(float ratio) {
       cameraHandler.post(() -> {
         if (!zoomSupported) return;

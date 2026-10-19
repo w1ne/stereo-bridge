@@ -152,6 +152,7 @@ public final class MainActivity extends Activity {
                     settings.flag("video_hdr"),
                     settings.get("video_codec", "avc"),
                     recorder::modeFeasible,
+                    recorder::hdrAvailable,
                     recorder::hevcAvailable,
                     (modeKey, hdr, codec) -> recorder.requestMode(modeKey, hdr, codec));
               }
