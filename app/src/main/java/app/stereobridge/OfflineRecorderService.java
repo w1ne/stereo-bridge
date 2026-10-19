@@ -915,6 +915,7 @@ public final class OfflineRecorderService extends Service {
       codecMime = chosenMime;
       feasibleModes = ordered;
       selectedMode = id + ":" + chosen.key() + ":" + chosenMime;
+      cameraId = id;
       size = new Size(chosen.width, chosen.height);
       int[] ae = ModeMatrixPolicy.aeRange(ranges, chosen.rate);
       if (ae == null) ae = ModeMatrixPolicy.compatAeRange(ranges, chosen.rate);
@@ -946,13 +947,11 @@ public final class OfflineRecorderService extends Service {
           Build.VERSION.SDK_INT >= 30 ? c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) : null;
       Float maxDigitalZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
       boolean zoomRangeUsable = zoomRange != null && zoomRange.getUpper() > zoomRange.getLower() + 0.001f;
-      boolean zoomAvailable = zoomRangeUsable
-          || (activeArray != null && maxDigitalZoom != null && maxDigitalZoom > 1.05f);
+      boolean digitalZoomUsable = activeArray != null && maxDigitalZoom != null && maxDigitalZoom > 1.05f;
+      boolean zoomAvailable = zoomRangeUsable || digitalZoomUsable;
+      float zoomMin = zoomRangeUsable ? zoomRange.getLower() : 1f;
+      float zoomMax = zoomRangeUsable ? zoomRange.getUpper() : (digitalZoomUsable ? Math.min(maxDigitalZoom, 8f) : 1f);
       zoomRatioSupported = zoomRangeUsable;
-      float zoomMin = zoomRange != null ? zoomRange.getLower() : 1f;
-      float zoomMax = zoomRange != null
-          ? zoomRange.getUpper()
-          : (maxDigitalZoom == null ? 1f : Math.min(maxDigitalZoom, 8f));
       zoomRatio = ZoomPolicy.clamp(zoomRatio, zoomMin, Math.min(zoomMax, 8f));
       Integer afRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
       capabilities = new CameraCapabilities(
