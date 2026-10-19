@@ -21,7 +21,7 @@ final class CameraControls {
   private final FocusRing ring;
   private final GestureDetector gestures;
   private final ScaleGestureDetector scale;
-  private float pinchStart = 1f, currentZoom = 1f;
+  private float currentZoom = 1f;
   private final Listener listener;
 
   CameraControls(Activity activity, FrameLayout frame, Ui ui, Listener listener) {
@@ -66,12 +66,11 @@ final class CameraControls {
             activity,
             new ScaleGestureDetector.SimpleOnScaleGestureListener() {
               @Override public boolean onScaleBegin(ScaleGestureDetector detector) {
-                pinchStart = currentZoom;
                 return true;
               }
 
               @Override public boolean onScale(ScaleGestureDetector detector) {
-                currentZoom = pinchStart * detector.getScaleFactor();
+                currentZoom *= detector.getScaleFactor();
                 listener.onZoom(currentZoom);
                 return true;
               }

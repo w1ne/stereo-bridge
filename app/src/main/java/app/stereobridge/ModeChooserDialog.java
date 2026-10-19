@@ -28,16 +28,15 @@ final class ModeChooserDialog {
     root.addView(ui.caption("Video mode"));
     RadioGroup modes = new RadioGroup(activity);
     int[] selectedIndex = {0};
-    final boolean[] hdrChosen = {currentHdr};
     final int[] selectedRate = {30};
     CheckBox hdr = new CheckBox(activity);
     ui.controls(hdr);
     hdr.setText("10-bit HDR (30 fps only)");
     TextView hdrHint = ui.caption("10-bit HDR can't be used unless video FPS is 30.");
-    hdrHint.setVisibility(hdrChosen[0] ? android.view.View.GONE : android.view.View.VISIBLE);
 
+    boolean hdrOffered = HdrPolicy.offer(caps.hlgCamera, caps.hlgEncoder);
     java.util.List<RadioButton> buttons = new java.util.ArrayList<>();
-    String feasibleDefault = null;
+    int firstFeasible = -1, remembered = -1;
     for (int index = 0; index < VideoMode.ALL.size(); index++) {
       VideoMode mode = VideoMode.ALL.get(index);
       RadioButton button = new RadioButton(activity);
@@ -45,40 +44,28 @@ final class ModeChooserDialog {
       boolean feasible = modeFeasible.test(mode.key());
       button.setText(mode.label() + (feasible ? "" : "  (not supported on this camera)"));
       button.setEnabled(feasible);
-      if (feasible && feasibleDefault == null) feasibleDefault = mode.key();
-      if (mode.key().equals(currentKey) && feasible) {
-        button.setChecked(true);
-        selectedIndex[0] = index;
-        selectedRate[0] = mode.rate;
-      }
+      if (feasible && firstFeasible < 0) firstFeasible = index;
+      if (feasible && mode.key().equals(currentKey)) remembered = index;
       final int indexFinal = index;
-      button.setOnClickListener(v -> {
-        selectedIndex[0] = indexFinal;
-        selectedRate[0] = mode.rate;
-        hdrChosen[0] = hdr.isChecked();
-      });
-      modes.addView(button);
-      buttons.add(button);
-    }
-    if (feasibleDefault != null && !buttons.get(selectedIndex[0]).isChecked()) {
-      for (int index = 0; index < VideoMode.ALL.size(); index++)
-        if (VideoMode.ALL.get(index).key().equals(feasibleDefault)) {
-          buttons.get(index).setChecked(true);
-          selectedIndex[0] = index;
-          selectedRate[0] = VideoMode.ALL.get(index).rate;
-        }
-    }
-    boolean hdrOffered = HdrPolicy.offer(caps.hlgCamera, caps.hlgEncoder);
-    hdr.setEnabled(hdrOffered && HdrPolicy.allowedAtRate(selectedRate[0]));
-    hdr.setChecked(hdrChosen[0] && hdr.isEnabled());
-    for (RadioButton button : buttons)
       button.setOnCheckedChangeListener((b, checked) -> {
         if (!checked) return;
+        selectedIndex[0] = indexFinal;
+        selectedRate[0] = mode.rate;
         boolean allowed = hdrOffered && HdrPolicy.allowedAtRate(selectedRate[0]);
         hdr.setEnabled(allowed);
         if (!allowed) hdr.setChecked(false);
         hdrHint.setVisibility(allowed ? android.view.View.GONE : android.view.View.VISIBLE);
       });
+      modes.addView(button);
+      buttons.add(button);
+    }
+    int preselected = remembered >= 0 ? remembered : firstFeasible;
+    if (preselected >= 0) buttons.get(preselected).setChecked(true);
+    hdr.setChecked(currentHdr && hdr.isEnabled());
+    if (!hdr.isEnabled())
+      hdrHint.setVisibility(android.view.View.VISIBLE);
+    else if (!hdr.isChecked())
+      hdrHint.setVisibility(android.view.View.GONE);
     root.addView(modes);
     root.addView(hdr);
     root.addView(hdrHint);
