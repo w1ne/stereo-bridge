@@ -82,6 +82,7 @@ public final class OfflineVideoEncoder {
       format.setInteger(MediaFormat.KEY_FRAME_RATE, rate);
       format.setInteger(MediaFormat.KEY_BIT_RATE, VideoCapabilityPolicy.bitrate(width, height, rate, v.getBitrateRange().getLower(), v.getBitrateRange().getUpper()));
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+      if (!CodecPolicy.HEVC.equals(mime) && !CodecPolicy.AVC.equals(mime)) return null;
       int profile = 0, level = 0;
       for (MediaCodecInfo.CodecProfileLevel candidate : caps.profileLevels) {
         if (CodecPolicy.HEVC.equals(mime)) {
@@ -89,14 +90,22 @@ public final class OfflineVideoEncoder {
               ? candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
                   || candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10
               : candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain;
-          if (family && candidate.level > level) { profile = candidate.profile; level = candidate.level; }
+          boolean prefer = hdr && candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10;
+          if (family && (candidate.level > level || (candidate.level == level && prefer))) {
+            profile = candidate.profile; level = candidate.level;
+          }
         } else {
           boolean family = candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh
               || candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline;
-          if (family && candidate.level > level) { profile = candidate.profile; level = candidate.level; }
+          boolean prefer = candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh;
+          if (family && (candidate.level > level || (candidate.level == level && prefer))) {
+            profile = candidate.profile; level = candidate.level;
+          }
         }
       }
-      if (profile == 0) return null;
+      if (profile == 0) {
+        return CodecPolicy.AVC.equals(mime) && caps.isFormatSupported(format) ? format : null;
+      }
       format.setInteger(MediaFormat.KEY_PROFILE, profile);
       // Legacy OMX requires a level whenever a profile is set (Android 10 ACodec regression).
       format.setInteger(MediaFormat.KEY_LEVEL, level);
@@ -124,10 +133,9 @@ public final class OfflineVideoEncoder {
   private static MediaCodec configuredVideo(int width, int height, int rate, String mime, boolean hdr) throws IOException {
     Throwable last = null;
     for (String candidateMime : hdr ? new String[] {CodecPolicy.HEVC} : CodecPolicy.order(mime)) {
-      boolean candidateHdr = hdr;
       for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
         if (!info.isEncoder()) continue;
-        MediaFormat format = videoFormat(info, candidateMime, width, height, rate, candidateHdr);
+        MediaFormat format = videoFormat(info, candidateMime, width, height, rate, hdr);
         if (format == null) continue;
         MediaCodec codec = null;
         try {
@@ -137,7 +145,9 @@ public final class OfflineVideoEncoder {
         } catch (Exception e) { last = e; if (codec != null) codec.release(); }
       }
     }
-    throw new IOException("No compatible surface encoder for " + mime + (hdr ? " HDR" : ""), last);
+    String attempted = hdr ? CodecPolicy.HEVC : mime;
+    throw new IOException("No compatible surface encoder for " + attempted
+        + (hdr ? " HDR" : "") + " " + width + "x" + height + "@" + rate, last);
   }
 
   private static MediaCodec configuredAudio() throws IOException {
