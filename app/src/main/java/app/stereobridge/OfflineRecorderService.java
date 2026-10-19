@@ -146,6 +146,10 @@ public final class OfflineRecorderService extends Service {
   private volatile String startupCameraFailure;
   private final Set<String> rejectedModes = new HashSet<>();
   private String selectedMode;
+  private VideoMode mode;
+  private List<VideoMode> feasibleModes = Collections.emptyList();
+  private String codecMime = CodecPolicy.AVC;
+  private boolean hdrActive;
 
   private boolean realtimeSensor;
   private OfflineVideoEncoder encoder;
@@ -331,7 +335,7 @@ public final class OfflineRecorderService extends Service {
           if (startupCameraFailure != null) throw new IOException(startupCameraFailure);
           take = recordingStore.begin();
           rotation = CameraGeometry.rotation(sensorOrientation, captureDisplayDegrees, frontFacing);
-          current = new OfflineVideoEncoder(take.descriptor.getFileDescriptor(), size.getWidth(), size.getHeight(), rotation, frameRate);
+          current = new OfflineVideoEncoder(take.descriptor.getFileDescriptor(), size.getWidth(), size.getHeight(), rotation, frameRate, codecMime, hdrActive);
           epoch = SystemClock.elapsedRealtimeNanos();
           current.start(epoch);
           synchronized (this) { checkActive(); encoder = current; }
@@ -704,67 +708,84 @@ public final class OfflineRecorderService extends Service {
     }
   }
 
+  private String firstSupportedCodec(VideoMode candidate) {
+    for (String mime : CodecPolicy.order(settings.get("video_codec", "avc")))
+      if (OfflineVideoEncoder.supportsVideo(candidate.width, candidate.height, candidate.rate, mime))
+        return mime;
+    return null;
+  }
+
+  private static int facingRank(CameraManager manager, String id, boolean wantFront) {
+    try {
+      Integer facing = manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
+      boolean front = Objects.equals(facing, CameraCharacteristics.LENS_FACING_FRONT);
+      boolean back = Objects.equals(facing, CameraCharacteristics.LENS_FACING_BACK);
+      if (wantFront) return front ? 0 : back ? 1 : 2;
+      return back ? 0 : front ? 1 : 2;
+    } catch (CameraAccessException e) { return 3; }
+  }
+
   private void chooseCamera(CameraManager manager) throws CameraAccessException, IOException {
     if (cameraId != null && (camera != null || opening)) return;
+    boolean wantFront = "front".equals(settings.get("facing", "back"));
     List<String> ids = new ArrayList<>(Arrays.asList(manager.getCameraIdList()));
-    ids.sort((a, b) -> {
-      try {
-        Integer fa = manager.getCameraCharacteristics(a).get(CameraCharacteristics.LENS_FACING);
-        Integer fb = manager.getCameraCharacteristics(b).get(CameraCharacteristics.LENS_FACING);
-        return Integer.compare(Objects.equals(fa, CameraCharacteristics.LENS_FACING_BACK) ? 0 : 1,
-            Objects.equals(fb, CameraCharacteristics.LENS_FACING_BACK) ? 0 : 1);
-      } catch (CameraAccessException e) { return 0; }
-    });
+    ids.sort((a, b) -> Integer.compare(facingRank(manager, a, wantFront), facingRank(manager, b, wantFront)));
     selectedMode = null;
     for (String id : ids) {
-      int eligibleModes = 0;
-      long previousArea = Long.MAX_VALUE;
       CameraCharacteristics c;
       try { c = manager.getCameraCharacteristics(id); } catch (CameraAccessException e) { continue; }
       StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
       if (map == null) continue;
-      Size[] choices = map.getOutputSizes(MediaCodec.class);
-      Size[] previews = map.getOutputSizes(SurfaceTexture.class);
-      if (choices == null || previews == null) continue;
-      Arrays.sort(choices, (a,b) -> Long.compare((long)b.getWidth()*b.getHeight(), (long)a.getWidth()*a.getHeight()));
-      Range<Integer>[] ranges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-      for (Size candidate : choices) {
-        if (!CameraGeometry.within1080(candidate.getWidth(),candidate.getHeight())
-            || !Arrays.asList(previews).contains(candidate)) continue;
-        long videoDuration = map.getOutputMinFrameDuration(MediaCodec.class,candidate);
-        long previewDuration = map.getOutputMinFrameDuration(SurfaceTexture.class,candidate);
-        Range<Integer> selected = null;
-        int rate = 0;
-        if (ranges != null) for (Range<Integer> range : ranges) {
-          // Keep the advertised request range: arbitrary narrowed ranges are invalid.
-          // Configured output minimum frame durations bound the actual capture rate.
-          int desired = VideoCapabilityPolicy.captureRate(range.getUpper(),videoDuration,previewDuration);
-          if (desired < range.getLower() || desired < 1
-              || !OfflineVideoEncoder.supportsVideo(candidate.getWidth(),candidate.getHeight(),desired)) continue;
-          if (selected == null || VideoCapabilityPolicy.preferRange(range.getUpper(),desired,range.getLower(),selected.getUpper(),rate,selected.getLower())) {
-            selected = range; rate = desired;
-          }
+      Size[] recordSizes = map.getOutputSizes(MediaCodec.class);
+      Size[] previewSizes = map.getOutputSizes(SurfaceTexture.class);
+      if (recordSizes == null || previewSizes == null) continue;
+      List<Size> recordList = Arrays.asList(recordSizes), previewList = Arrays.asList(previewSizes);
+      Range<Integer>[] advertised = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+      int[][] ranges = null;
+      if (advertised != null) {
+        ranges = new int[advertised.length][2];
+        for (int n = 0; n < advertised.length; n++) {
+          ranges[n][0] = advertised[n].getLower();
+          ranges[n][1] = advertised[n].getUpper();
         }
-        if (rate == 0 || !OfflineVideoEncoder.supportsVideo(candidate.getWidth(),candidate.getHeight(),rate)) continue;
-        // Keep progressively smaller choices and reserve attempts for other cameras.
-        long area = (long) candidate.getWidth() * candidate.getHeight();
-        if (eligibleModes > 0 && area > previousArea * 3 / 4) continue;
-        if (++eligibleModes > 3) break;
-        previousArea = area;
-        String key = id + ":" + candidate.getWidth() + "x" + candidate.getHeight() + ":" + rate;
-        if (preparingCamera && rejectedModes.contains(key)) continue;
-        selectedMode = key;
-        cameraId = id; size = candidate; fps = selected; frameRate = rate;
-        if (previewTexture != null) previewTexture.setDefaultBufferSize(size.getWidth(),size.getHeight());
-        Integer sensor = c.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        sensorOrientation = sensor == null ? 90 : sensor;
-        frontFacing = Objects.equals(c.get(CameraCharacteristics.LENS_FACING),CameraCharacteristics.LENS_FACING_FRONT);
-        rotation = CameraGeometry.rotation(sensorOrientation,displayDegrees,frontFacing);
-        realtimeSensor = Objects.equals(c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE),CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
-        return;
       }
+      List<VideoMode> feasible = new ArrayList<>();
+      for (VideoMode candidate : VideoMode.FALLBACK) {
+        Size candidateSize = new Size(candidate.width, candidate.height);
+        if (!recordList.contains(candidateSize) || !previewList.contains(candidateSize)) continue;
+        if (!ModeMatrixPolicy.fpsRangeCovers(ranges, candidate.rate)) continue;
+        if (firstSupportedCodec(candidate) == null) continue;
+        feasible.add(candidate);
+      }
+      if (feasible.isEmpty()) continue;
+      List<VideoMode> ordered = ModeMatrixPolicy.order(feasible, settings.get("video_mode", ""));
+      VideoMode chosen = null;
+      String chosenMime = null;
+      for (VideoMode candidate : ordered) {
+        String mime = firstSupportedCodec(candidate);
+        if (preparingCamera && rejectedModes.contains(candidate.key() + ":" + mime)) continue;
+        chosen = candidate;
+        chosenMime = mime;
+        break;
+      }
+      if (chosen == null) continue;
+      mode = chosen;
+      codecMime = chosenMime;
+      feasibleModes = ordered;
+      selectedMode = chosen.key() + ":" + chosenMime;
+      size = new Size(chosen.width, chosen.height);
+      int[] ae = ModeMatrixPolicy.aeRange(ranges, chosen.rate);
+      fps = new Range<>(ae[0], ae[1]);
+      frameRate = chosen.rate;
+      if (previewTexture != null) previewTexture.setDefaultBufferSize(chosen.width, chosen.height);
+      Integer sensor = c.get(CameraCharacteristics.SENSOR_ORIENTATION);
+      sensorOrientation = sensor == null ? 90 : sensor;
+      frontFacing = Objects.equals(c.get(CameraCharacteristics.LENS_FACING), CameraCharacteristics.LENS_FACING_FRONT);
+      rotation = CameraGeometry.rotation(sensorOrientation, displayDegrees, frontFacing);
+      realtimeSensor = Objects.equals(c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
+      return;
     }
-    throw new IOException("No camera and AVC encoder share a supported video mode up to 1080p.");
+    throw new IOException("No camera and encoder share a supported video mode.");
   }
 
   private void configure() {
