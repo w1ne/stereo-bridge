@@ -1020,14 +1020,21 @@ In `chooseCamera`, just before `return;` (after `realtimeSensor = ...`), add:
       Integer[] opticalModes = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
       android.util.Range<Float> zoomRange =
           Build.VERSION.SDK_INT >= 30 ? c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) : null;
+      Float maxDigitalZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+      boolean zoomAvailable = zoomRange != null
+          || (activeArray != null && maxDigitalZoom != null && maxDigitalZoom > 1.05f);
+      float zoomMin = zoomRange != null ? zoomRange.getLower() : 1f;
+      float zoomMax = zoomRange != null
+          ? zoomRange.getUpper()
+          : (maxDigitalZoom == null ? 1f : Math.min(maxDigitalZoom, 8f));
       Integer afRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
       capabilities = new CameraCapabilities(
           StabilizationPolicy.videoStabilization(toInts(stabilizationModes)),
           StabilizationPolicy.opticalStabilization(toInts(opticalModes)),
           Boolean.TRUE.equals(c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE)),
-          zoomRange != null,
-          zoomRange == null ? 1f : zoomRange.getLower(),
-          zoomRange == null ? 1f : zoomRange.getUpper(),
+          zoomAvailable,
+          zoomMin,
+          zoomMax,
           afRegions == null ? 0 : afRegions,
           hlgCamera(c),
           OfflineVideoEncoder.supportsHlgEncode(chosen.width, chosen.height, chosen.rate));
@@ -1074,7 +1081,9 @@ Add:
     if (fps != null) request.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fps);
     if (stabMode != StabilizationPolicy.NONE)
       request.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, stabMode);
-    if (oisOffered)
+    // Explicit OIS only when EIS is unavailable: an EIS request already engages the HAL's fused
+    // OIS+EIS on Pixel-class devices, and AOSP warns against explicitly combining both.
+    if (oisOffered && stabMode == StabilizationPolicy.NONE)
       request.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
     request.set(CaptureRequest.CONTROL_AF_MODE,
         focusLock ? CaptureRequest.CONTROL_AF_MODE_AUTO : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
