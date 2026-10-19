@@ -24,6 +24,11 @@ final class CameraControls {
   private float currentZoom = 1f;
   private boolean scaling;
   private final Listener listener;
+  private float lastZoom = -1, lastAlpha = -1;
+  private String lastZoomText;
+  private boolean lastZoomEnabled = true;
+  private int lastModeVisibility = -1, lastZoomVisibility = -1, lastTorchVisibility = -1,
+      lastLockVisibility = -1, lastFlipVisibility = -1;
 
   CameraControls(Activity activity, FrameLayout frame, Ui ui, Listener listener) {
     this.listener = listener;
@@ -96,24 +101,59 @@ final class CameraControls {
   }
 
   void refresh(CameraCapabilities caps, String modeLabel, float zoom, boolean torch, boolean idle, boolean focusLocked) {
-    modeChip.setText(modeLabel == null ? "" : modeLabel);
-    modeChip.setVisibility(modeLabel == null || modeLabel.isEmpty() ? View.GONE : View.VISIBLE);
-    modeChip.setAlpha(idle ? 1f : 0.5f);
-    currentZoom = zoom;
-    if (zoom <= 1.001f) zoomChip.setVisibility(View.GONE);
-    else {
-      zoomChip.setText(String.format(Locale.ROOT, "%.1fx", zoom));
-      zoomChip.setVisibility(View.VISIBLE);
+    String modeText = modeLabel == null ? "" : modeLabel;
+    setTextIfChanged(modeChip, modeText);
+    int modeVisibility = modeLabel == null || modeLabel.isEmpty() ? View.GONE : View.VISIBLE;
+    if (modeVisibility != lastModeVisibility) {
+      modeChip.setVisibility(modeVisibility);
+      lastModeVisibility = modeVisibility;
     }
-    zoomChip.setEnabled(caps != null && caps.zoom);
-    torchChip.setVisibility(caps != null && caps.flash ? View.VISIBLE : View.GONE);
-    torchChip.setText(torch ? "Torch on" : "Torch");
-    flipChip.setVisibility(View.VISIBLE);
-    flipChip.setAlpha(idle ? 1f : 0.5f);
-    lockChip.setVisibility(caps != null && caps.maxAfRegions > 0 ? View.VISIBLE : View.GONE);
-    lockChip.setText(focusLocked ? "Locked" : "Lock AE/AWB");
-    ring.locked = focusLocked;
-    ring.invalidate();
+    float alpha = idle ? 1f : 0.5f;
+    if (alpha != lastAlpha) {
+      modeChip.setAlpha(alpha);
+      flipChip.setAlpha(alpha);
+      lastAlpha = alpha;
+    }
+    currentZoom = zoom;
+    if (zoom != lastZoom) {
+      lastZoom = zoom;
+      lastZoomText = String.format(Locale.ROOT, "%.1fx", zoom);
+    }
+    int zoomVisibility = zoom <= 1.001f ? View.GONE : View.VISIBLE;
+    if (zoomVisibility != lastZoomVisibility) {
+      zoomChip.setVisibility(zoomVisibility);
+      lastZoomVisibility = zoomVisibility;
+    }
+    if (zoomVisibility == View.VISIBLE) setTextIfChanged(zoomChip, lastZoomText);
+    boolean zoomEnabled = caps != null && caps.zoom;
+    if (zoomEnabled != lastZoomEnabled) {
+      zoomChip.setEnabled(zoomEnabled);
+      lastZoomEnabled = zoomEnabled;
+    }
+    int torchVisibility = caps != null && caps.flash ? View.VISIBLE : View.GONE;
+    if (torchVisibility != lastTorchVisibility) {
+      torchChip.setVisibility(torchVisibility);
+      lastTorchVisibility = torchVisibility;
+    }
+    setTextIfChanged(torchChip, torch ? "Torch on" : "Torch");
+    if (lastFlipVisibility != View.VISIBLE) {
+      flipChip.setVisibility(View.VISIBLE);
+      lastFlipVisibility = View.VISIBLE;
+    }
+    int lockVisibility = caps != null && caps.maxAfRegions > 0 ? View.VISIBLE : View.GONE;
+    if (lockVisibility != lastLockVisibility) {
+      lockChip.setVisibility(lockVisibility);
+      lastLockVisibility = lockVisibility;
+    }
+    setTextIfChanged(lockChip, focusLocked ? "Locked" : "Lock AE/AWB");
+    if (ring.locked != focusLocked) {
+      ring.locked = focusLocked;
+      ring.invalidate();
+    }
+  }
+
+  private static void setTextIfChanged(TextView view, String text) {
+    if (!view.getText().toString().equals(text)) view.setText(text);
   }
 
   void showFocusRing(float x, float y, boolean locked) {
