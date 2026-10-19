@@ -974,6 +974,10 @@ public final class OfflineRecorderService extends Service {
           && settings.flag("video_hdr")
           && HdrPolicy.offer(capabilities.hlgCamera, capabilities.hlgEncoder)
           && HdrPolicy.allowedAtRate(chosen.rate);
+      if (hdrActive) {
+        codecMime = CodecPolicy.HEVC;
+        selectedMode = id + ":" + chosen.key() + ":" + codecMime;
+      }
       return;
     }
     throw new IOException("No camera and encoder share a supported video mode.");
@@ -1132,12 +1136,9 @@ public final class OfflineRecorderService extends Service {
             public void onConfigureFailed(CameraCaptureSession session) {
               session.close();
               if (version != configuration) return;
-              if (hdrActive && target == null) {
-                hdrActive = false;
+              if (hdrActive && target != null) {
                 hdrSessionFailed = true;
-                android.util.Log.w("StereoRecorder", "HLG preview session rejected; using SDR");
-                configure();
-                return;
+                android.util.Log.w("StereoRecorder", "HLG recording session rejected; retrying as SDR");
               }
               cameraFailure("Camera capture configuration failed.");
             }
