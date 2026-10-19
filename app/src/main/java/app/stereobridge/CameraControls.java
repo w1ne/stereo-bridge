@@ -21,6 +21,9 @@ final class CameraControls {
   private final FocusRing ring;
   private final GestureDetector gestures;
   private final ScaleGestureDetector scale;
+  private final LinearLayout actions;
+  private final FrameLayout.LayoutParams modeParams, actionsParams, lockParams, zoomParams;
+  private final int pad;
   private float currentZoom = 1f;
   private boolean scaling;
   private final Listener listener;
@@ -32,6 +35,7 @@ final class CameraControls {
 
   CameraControls(Activity activity, FrameLayout frame, Ui ui, Listener listener) {
     this.listener = listener;
+    pad = ui.dp(16);
     modeChip = chip(activity, ui, 13);
     zoomChip = chip(activity, ui, 13);
     torchChip = chip(activity, ui, 13);
@@ -45,11 +49,24 @@ final class CameraControls {
     lockChip.setContentDescription("Lock exposure and focus");
     ring = new FocusRing(activity, ui.border, ui.accent, ui.dp(24), ui.dp(2));
     frame.addView(ring, new FrameLayout.LayoutParams(-1, -1));
-    addChip(frame, modeChip, Gravity.TOP | Gravity.START, ui);
-    addChip(frame, flipChip, Gravity.TOP | Gravity.END, ui);
-    addChip(frame, torchChip, Gravity.BOTTOM | Gravity.START, ui);
-    addChip(frame, zoomChip, Gravity.BOTTOM | Gravity.END, ui);
-    addChip(frame, lockChip, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, ui);
+    modeParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+    modeParams.setMargins(pad, pad, pad, pad);
+    frame.addView(modeChip, modeParams);
+    actions = new LinearLayout(activity);
+    actions.setOrientation(LinearLayout.HORIZONTAL);
+    actions.addView(flipChip, new LinearLayout.LayoutParams(-2, -2));
+    LinearLayout.LayoutParams torchParams = new LinearLayout.LayoutParams(-2, -2);
+    torchParams.leftMargin = ui.dp(8);
+    actions.addView(torchChip, torchParams);
+    actionsParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+    actionsParams.setMargins(pad, pad, pad, pad);
+    frame.addView(actions, actionsParams);
+    lockParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
+    lockParams.setMargins(pad, pad, pad, ui.dp(200));
+    frame.addView(lockChip, lockParams);
+    zoomParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+    zoomParams.setMargins(pad, pad, pad, ui.dp(200));
+    frame.addView(zoomChip, zoomParams);
     modeChip.setOnClickListener(v -> listener.onMode());
     flipChip.setOnClickListener(v -> listener.onFlip());
     torchChip.setOnClickListener(v -> listener.onTorch());
@@ -175,10 +192,15 @@ final class CameraControls {
     return chip;
   }
 
-  private void addChip(FrameLayout frame, TextView chip, int gravity, Ui ui) {
-    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-2, -2, gravity);
-    params.setMargins(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8));
-    frame.addView(chip, params);
+  void setVerticalInsets(int top, int bottom) {
+    modeParams.topMargin = top + pad;
+    actionsParams.topMargin = top + pad;
+    lockParams.bottomMargin = bottom + pad;
+    zoomParams.bottomMargin = bottom + pad;
+    modeChip.setLayoutParams(modeParams);
+    actions.setLayoutParams(actionsParams);
+    lockChip.setLayoutParams(lockParams);
+    zoomChip.setLayoutParams(zoomParams);
   }
 
   private static final class FocusRing extends View {

@@ -21,13 +21,12 @@ public final class MainActivity extends Activity {
   private int transformedDisplay = -1;
   private SurfaceTexture texture;
   private OfflineRecorderService.LocalBinder recorder, previewOwner;
-  private boolean bound, resumed, pendingRecord, expanded, permissionRequestInFlight;
+  private boolean bound, resumed, pendingRecord, permissionRequestInFlight;
   private CameraControls controls;
   private FrameLayout previewFrame;
+  private LinearLayout topPanel, bottomPanel;
   private TextView status, leftLabel, rightLabel, timer;
-  private Button record, advancedButton, last, permissionSettings, notificationSettings;
-  private TextView notificationHint;
-  private LinearLayout advanced;
+  private Button record, last;
   private Meter leftMeter, rightMeter;
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final ServiceConnection connection =
@@ -49,31 +48,40 @@ public final class MainActivity extends Activity {
     super.onCreate(saved);
     ui = new Ui(this);
     settings = new BridgeSettings(this);
-    if (saved != null) expanded = saved.getBoolean("advanced");
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     build();
   }
 
   private void build() {
-    boolean landscape = getResources().getConfiguration().orientation
-        == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
-    LinearLayout footer = new LinearLayout(this);
-    footer.setOrientation(LinearLayout.VERTICAL);
-    ScrollView scroll = new ScrollView(this);
-    LinearLayout root = new LinearLayout(this);
-    root.setOrientation(LinearLayout.VERTICAL);
-    scroll.addView(root);
-    root.addView(ui.caption("STEREO BRIDGE"));
-    ui.space(root, 8);
-    root.addView(ui.text(landscape ? "Two mics. One recording." : "Two mics.\nOne recording.", landscape ? 24 : 30, true));
-    root.addView(ui.caption("Stereo video. No receiver. Works offline."));
-    ui.space(root, 16);
+    getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));
+    View decor = getWindow().getDecorView();
+    if (Build.VERSION.SDK_INT >= 30) {
+      getWindow().setDecorFitsSystemWindows(false);
+      getWindow().setStatusBarColor(Color.TRANSPARENT);
+      getWindow().setNavigationBarColor(Color.TRANSPARENT);
+      WindowInsetsController controller = decor.getWindowInsetsController();
+      if (controller != null) {
+        int mask =
+            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+        controller.setSystemBarsAppearance(ui.dark ? 0 : mask, mask);
+      }
+    } else {
+      int mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+      decor.setSystemUiVisibility(
+          View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+              | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+              | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+              | (ui.dark ? 0 : mask));
+    }
+    FrameLayout root = new FrameLayout(this);
+    root.setBackgroundColor(Color.BLACK);
     preview = new TextureView(this);
     preview.setOpaque(true);
     previewFrame = new FrameLayout(this);
     previewFrame.setBackgroundColor(Color.BLACK);
     previewFrame.addView(preview, new FrameLayout.LayoutParams(-1, -1));
-    root.addView(previewFrame, new LinearLayout.LayoutParams(-1, ui.dp(landscape ? 120 : 250)));
+    root.addView(previewFrame, new FrameLayout.LayoutParams(-1, -1));
     preview.setSurfaceTextureListener(
         new TextureView.SurfaceTextureListener() {
           public void onSurfaceTextureAvailable(SurfaceTexture texture, int width, int height) {
@@ -157,42 +165,39 @@ public final class MainActivity extends Activity {
                     (modeKey, hdr, codec) -> recorder.requestMode(modeKey, hdr, codec));
               }
             });
-    ui.space(root, 12);
-    status = ui.text("Ready to record", 18, true);
-    footer.addView(status);
+    topPanel = new LinearLayout(this);
+    topPanel.setOrientation(LinearLayout.VERTICAL);
+    topPanel.setBackground(ui.shape(ui.dark ? 0xCC171F2B : 0xE6FFFFFF, 18, false));
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    TextView title = ui.text("STEREO BRIDGE", 11, true);
+    title.setLetterSpacing(0.12f);
+    title.setTextColor(ui.secondary);
+    titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
     timer = ui.caption("");
+    timer.setGravity(Gravity.END);
     timer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-    footer.addView(timer);
-    ui.space(root, 12);
-    LinearLayout mics = ui.card(root);
-    leftLabel = ui.caption("");
-    mics.addView(leftLabel);
-    leftMeter = new Meter(ui.accent);
-    mics.addView(leftMeter, new LinearLayout.LayoutParams(-1, ui.dp(10)));
-    ui.space(mics, 12);
-    rightLabel = ui.caption("");
-    mics.addView(rightLabel);
-    rightMeter = new Meter(ui.blue);
-    mics.addView(rightMeter, new LinearLayout.LayoutParams(-1, ui.dp(10)));
-    record = ui.button(footer, "Record", true, this::recordOrStop);
-    TextView hint =
-        ui.caption(
-            landscape ? "Capture continues in the background. Stop to save."
-                : "Tap Record to connect both mics and start video.\n"
-                + "Tap Stop to save to Movies / Stereo Bridge.\nCapture continues with the screen asleep or another app open.");
-    hint.setGravity(Gravity.CENTER);
-    footer.addView(hint);
-    permissionSettings = ui.button(footer, "Open app permission settings", false, this::openAppSettings);
-    notificationHint = ui.caption("Notifications are off. Capture can continue in the background; return here to Stop. Enable notifications for a visible Stop action.");
-    root.addView(notificationHint);
-    notificationSettings = ui.button(root, "Notification settings", false, () -> startActivity(
-        new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName())));
-    ui.button(root, "Privacy policy", false, this::showPrivacy);
+    titleRow.addView(timer);
+    topPanel.addView(titleRow);
+    status = ui.text("Ready to record", 17, true);
+    LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
+    statusParams.topMargin = ui.dp(2);
+    topPanel.addView(status, statusParams);
+    topPanel.setPadding(ui.dp(18), ui.dp(10), ui.dp(18), ui.dp(10));
+    FrameLayout.LayoutParams topParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+    topParams.setMargins(ui.dp(12), 0, ui.dp(12), 0);
+    root.addView(topPanel, topParams);
+
+    bottomPanel = new LinearLayout(this);
+    bottomPanel.setOrientation(LinearLayout.VERTICAL);
+    bottomPanel.setBackground(ui.shape(ui.dark ? 0xE6171F2B : 0xE6FFFFFF, 22, false));
+    bottomPanel.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12));
+    LinearLayout actions = new LinearLayout(this);
+    actions.setOrientation(LinearLayout.HORIZONTAL);
     last =
         ui.button(
-            root,
+            actions,
             "Open last video",
             false,
             () -> {
@@ -209,40 +214,160 @@ public final class MainActivity extends Activity {
                       .show();
                 }
             });
-    advancedButton =
-        ui.button(
-            root,
-            expanded ? "Hide controls" : "Advanced controls",
-            false,
-            () -> {
-              expanded = !expanded;
-              advanced.setVisibility(expanded ? View.VISIBLE : View.GONE);
-              advancedButton.setText(expanded ? "Hide controls" : "Advanced controls");
-            });
-    advanced = new LinearLayout(this);
-    advanced.setOrientation(LinearLayout.VERTICAL);
-    advanced.setVisibility(expanded ? View.VISIBLE : View.GONE);
-    root.addView(advanced);
-    microphone(true);
-    microphone(false);
+    compact(last);
+    compact(ui.button(actions, "More", false, this::showMore));
+    bottomPanel.addView(actions);
+
+    LinearLayout mics = new LinearLayout(this);
+    mics.setOrientation(LinearLayout.VERTICAL);
+    mics.setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10));
+    mics.setBackground(ui.shape(ui.dark ? 0xCC0C1118 : 0xCCF3F5F8, 16, false));
+    leftLabel = ui.caption("");
+    leftMeter = new Meter(ui.accent);
+    mics.addView(micRow(leftLabel, leftMeter));
+    ui.space(mics, 8);
+    rightLabel = ui.caption("");
+    rightMeter = new Meter(ui.blue);
+    mics.addView(micRow(rightLabel, rightMeter));
+    LinearLayout.LayoutParams micsParams = new LinearLayout.LayoutParams(-1, -2);
+    micsParams.topMargin = ui.dp(6);
+    bottomPanel.addView(mics, micsParams);
+
+    record = ui.button(bottomPanel, "Record", true, this::recordOrStop);
+    TextView hint =
+        ui.caption(
+            "Tap Record to connect both mics and start video. Tap Stop to save."
+                + " Capture continues with the screen asleep or another app open.");
+    hint.setGravity(Gravity.CENTER);
+    hint.setTextSize(13);
+    bottomPanel.addView(hint);
+
+    FrameLayout.LayoutParams bottomParams =
+        new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+    bottomParams.setMargins(ui.dp(12), 0, ui.dp(12), 0);
+    root.addView(bottomPanel, bottomParams);
+
+    root.setOnApplyWindowInsetsListener(
+        (v, insets) -> {
+          int[] bars = systemBars(insets);
+          topPanel.setPadding(
+              ui.dp(18), bars[1] + ui.dp(10), ui.dp(18), ui.dp(10));
+          bottomPanel.setPadding(
+              ui.dp(16), ui.dp(12), ui.dp(16), bars[3] + ui.dp(12));
+          updateControlClearance();
+          return insets;
+        });
+    View.OnLayoutChangeListener clearance =
+        (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+            updateControlClearance();
+    topPanel.addOnLayoutChangeListener(clearance);
+    bottomPanel.addOnLayoutChangeListener(clearance);
+
+    setContentView(root);
+    root.requestApplyInsets();
+    refresh();
+  }
+
+  private void compact(Button button) {
+    button.setTextSize(14);
+    button.setMinHeight(ui.dp(40));
+    button.setMinimumHeight(ui.dp(40));
+    button.setPadding(ui.dp(10), 0, ui.dp(10), 0);
+    LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) button.getLayoutParams();
+    params.width = 0;
+    params.weight = 1;
+    params.topMargin = 0;
+    params.bottomMargin = 0;
+    params.setMarginStart(ui.dp(4));
+    params.setMarginEnd(ui.dp(4));
+  }
+
+  private View micRow(TextView label, Meter meter) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+    LinearLayout.LayoutParams meterParams = new LinearLayout.LayoutParams(0, ui.dp(10), 1);
+    meterParams.leftMargin = ui.dp(12);
+    row.addView(meter, meterParams);
+    return row;
+  }
+
+  private void updateControlClearance() {
+    if (controls == null || topPanel.getHeight() == 0 || bottomPanel.getHeight() == 0) return;
+    controls.setVerticalInsets(topPanel.getHeight(), bottomPanel.getHeight() + ui.dp(8));
+  }
+
+  private static int[] systemBars(WindowInsets insets) {
+    if (Build.VERSION.SDK_INT >= 30) {
+      Insets bars =
+          insets.getInsets(
+              WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+      return new int[] {bars.left, bars.top, bars.right, bars.bottom};
+    }
+    DisplayCutout cutout = insets.getDisplayCutout();
+    return new int[] {
+      Math.max(insets.getSystemWindowInsetLeft(), cutout == null ? 0 : cutout.getSafeInsetLeft()),
+      Math.max(insets.getSystemWindowInsetTop(), cutout == null ? 0 : cutout.getSafeInsetTop()),
+      Math.max(insets.getSystemWindowInsetRight(), cutout == null ? 0 : cutout.getSafeInsetRight()),
+      Math.max(insets.getSystemWindowInsetBottom(), cutout == null ? 0 : cutout.getSafeInsetBottom())
+    };
+  }
+
+  private void showMore() {
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(8));
+    content.addView(ui.text("Advanced mic controls", 16, true));
+    microphone(content, true);
+    microphone(content, false);
     CheckBox swap = new CheckBox(this);
     swap.setText("Swap left and right");
     ui.controls(swap);
     swap.setChecked(settings.flag("swap"));
     swap.setOnCheckedChangeListener((b, v) -> settings.flag("swap", v));
-    advanced.addView(swap);
+    content.addView(swap);
     ui.button(
-        advanced,
+        content,
         "Pair microphones",
         false,
         () -> startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
-    advanced.addView(
+    content.addView(
         ui.caption(
             "First use: pair two original DJI Mic Mini transmitters and allow camera"
                 + " and nearby devices access (Android 12 or later). Your choices are saved after reboot. Wi-Fi and"
                 + " debugging are not needed. Other microphone models are unsupported."));
-    ui.screen(scroll, root, footer);
-    refresh();
+    boolean notificationsOff =
+        !getSystemService(NotificationManager.class).areNotificationsEnabled();
+    if (notificationsOff) {
+      content.addView(
+          ui.caption(
+              "Notifications are off. Capture can continue in the background; return here to"
+                  + " Stop. Enable notifications for a visible Stop action."));
+      ui.button(
+          content,
+          "Notification settings",
+          false,
+          () ->
+              startActivity(
+                  new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      .putExtra(
+                          android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName())));
+    }
+    boolean denied =
+        checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+            || !bluetoothGranted();
+    if (denied)
+      ui.button(content, "Open app permission settings", false, this::openAppSettings);
+    ui.button(content, "Privacy policy", false, this::showPrivacy);
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(content);
+    new AlertDialog.Builder(this)
+        .setTitle("More")
+        .setView(scroll)
+        .setPositiveButton("Close", null)
+        .show();
   }
 
   private void transform(int width, int height) {
@@ -262,14 +387,14 @@ public final class MainActivity extends Activity {
     preview.setTransform(matrix);
   }
 
-  private void microphone(boolean left) {
+  private void microphone(LinearLayout parent, boolean left) {
     ui.button(
-        advanced,
+        parent,
         left ? "Choose left microphone" : "Choose right microphone",
         false,
         () -> select(left));
     TextView gain = ui.caption("Gain " + Math.round(settings.gain(left) * 100) + "%");
-    advanced.addView(gain);
+    parent.addView(gain);
     SeekBar slider = new SeekBar(this);
     slider.setMax(200);
     slider.setProgress(Math.round(settings.gain(left) * 100));
@@ -285,13 +410,13 @@ public final class MainActivity extends Activity {
 
           public void onStopTrackingTouch(SeekBar s) {}
         });
-    advanced.addView(slider);
+    parent.addView(slider);
     CheckBox mute = new CheckBox(this);
     mute.setText(left ? "Mute left" : "Mute right");
     ui.controls(mute);
     mute.setChecked(settings.flag(left ? "mute_left" : "mute_right"));
     mute.setOnCheckedChangeListener((b, v) -> settings.flag(left ? "mute_left" : "mute_right", v));
-    advanced.addView(mute);
+    parent.addView(mute);
   }
 
   private boolean bluetoothGranted() {
@@ -558,12 +683,6 @@ public final class MainActivity extends Activity {
     if (recorder != null)
       controls.refresh(recorder.capabilities(), recorder.modeLabel(), recorder.zoom(), recorder.torch(), idle, recorder.focusLocked());
     else controls.refresh(null, "", 1f, false, idle, false);
-    boolean denied = checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
-        || !bluetoothGranted();
-    permissionSettings.setVisibility(denied ? View.VISIBLE : View.GONE);
-    boolean notificationsOff = !getSystemService(NotificationManager.class).areNotificationsEnabled();
-    notificationHint.setVisibility(notificationsOff ? View.VISIBLE : View.GONE);
-    notificationSettings.setVisibility(notificationsOff ? View.VISIBLE : View.GONE);
     last.setEnabled(!s.busy() && !s.savedUri().isEmpty());
   }
 
@@ -607,12 +726,6 @@ public final class MainActivity extends Activity {
       recorder = null;
     }
     super.onStop();
-  }
-
-  @Override
-  protected void onSaveInstanceState(Bundle out) {
-    out.putBoolean("advanced", expanded);
-    super.onSaveInstanceState(out);
   }
 
   private final class Meter extends View {
