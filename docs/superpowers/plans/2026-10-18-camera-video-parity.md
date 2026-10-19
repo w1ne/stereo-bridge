@@ -837,6 +837,8 @@ git commit -m "Support HEVC High profile and HLG encoding in the video encoder"
 
 ### Task 7: Mode negotiation in OfflineRecorderService
 
+Execution note (reconciled during review, commits 8f8b763 + 6eafb2b): retry keys are scoped per camera and codec (`id:WxH@rate:mime`), codecs are retried per mode, negotiation state resets and the new fields are `volatile`, `rejectedModes` is a `ConcurrentHashMap.newKeySet()`, and the now-unused `captureRate`/`preferRange` helpers were removed. The snippets below show the pre-review form; the committed version is authoritative.
+
 **Files:**
 - Modify: `app/src/main/java/app/stereobridge/OfflineRecorderService.java` (`chooseCamera`, fields)
 - Modify: `app/src/main/java/app/stereobridge/CameraGeometry.java` (remove `within1080`)
@@ -991,10 +993,10 @@ git commit -m "Negotiate video modes from the capability matrix"
 Next to the Task 7 fields add:
 
 ```java
-  private CameraCapabilities capabilities = CameraCapabilities.NONE;
+  private volatile CameraCapabilities capabilities = CameraCapabilities.NONE;
   private int stabMode = StabilizationPolicy.NONE;
-  private boolean oisOffered, zoomSupported, torchOn, focusLock;
-  private float zoomRatio = 1f;
+  private volatile boolean oisOffered, zoomSupported, torchOn, focusLock;
+  private volatile float zoomRatio = 1f;
   private float[] focusPoint;
   private android.graphics.Rect activeArray;
   private List<Surface> sessionSurfaces = Collections.emptyList();
