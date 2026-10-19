@@ -42,11 +42,15 @@ for path in files:
             rms = math.sqrt(sum(x*x for x in window)/len(window))
             assert rms > 500, f'{path}: silent 100 ms interval on channel {side}'
     packets = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_packets',
-        '-show_entries', 'packet=stream_index,pts_time', '-of', 'json', str(path)]))['packets']
+        '-show_entries', 'packet=stream_index,pts_time,dts_time', '-of', 'json', str(path)]))['packets']
     for stream in (video, audio):
-        pts = [float(p['pts_time']) for p in packets
-               if p['stream_index'] == stream['index'] and 'pts_time' in p]
-        assert pts and all(b >= a for a, b in zip(pts, pts[1:])), 'Nonmonotonic track timestamps'
+        stream_packets = [p for p in packets if p['stream_index'] == stream['index']]
+        pts = [float(p['pts_time']) for p in stream_packets if 'pts_time' in p]
+        dts = [float(p['dts_time']) for p in stream_packets if 'dts_time' in p]
+        timeline = [float(p['dts_time'] if 'dts_time' in p else p['pts_time'])
+                    for p in stream_packets if 'dts_time' in p or 'pts_time' in p]
+        assert pts and all(t >= 0 for t in pts + dts), 'Negative track timestamps'
+        assert all(b >= a for a, b in zip(timeline, timeline[1:])), 'Nonmonotonic track timestamps'
     report = {'file': path.name, 'video': f"{video['width']}x{video['height']}",
               'duration': metadata['format']['duration'], 'sample_rate': 48000,
               'channels': 2, 'tone_power_ratios': ratios,
