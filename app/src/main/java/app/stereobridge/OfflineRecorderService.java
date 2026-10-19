@@ -157,6 +157,9 @@ public final class OfflineRecorderService extends Service {
   private volatile CameraCapabilities capabilities = CameraCapabilities.NONE;
   private int stabMode = StabilizationPolicy.NONE;
   private volatile boolean oisOffered, zoomSupported, torchOn, focusLock;
+  private boolean continuousVideoAf, continuousPictureAf, autoAf, zoomRatioSupported;
+  private boolean aeLockAvailable, awbLockAvailable;
+  private int maxAeRegions;
   private volatile float zoomRatio = 1f;
   private float[] focusPoint;
   private android.graphics.Rect activeArray;
@@ -293,6 +296,7 @@ public final class OfflineRecorderService extends Service {
         settings.set("facing", frontFacing ? "back" : "front");
         cameraId = null;
         zoomRatio = 1f;
+        cameraHandler.removeCallbacks(focusRevert);
         focusPoint = null;
         focusLock = false;
         torchOn = false;
@@ -313,6 +317,7 @@ public final class OfflineRecorderService extends Service {
         settings.set("video_codec", codec);
         cameraId = null;
         zoomRatio = 1f;
+        cameraHandler.removeCallbacks(focusRevert);
         focusPoint = null;
         focusLock = false;
         try {
@@ -789,6 +794,7 @@ public final class OfflineRecorderService extends Service {
               closeDevice(device);
               if (camera == device) camera = null;
               opening = false;
+              torchOn = false;
               cameraFailure("Camera disconnected.");
               maybeQuitCameraThread();
             }
@@ -797,6 +803,7 @@ public final class OfflineRecorderService extends Service {
               closeDevice(device);
               if (camera == device) camera = null;
               opening = false;
+              torchOn = false;
               cameraFailure("Camera unavailable (" + code + "). Close other camera apps.");
               maybeQuitCameraThread();
             }
@@ -843,6 +850,7 @@ public final class OfflineRecorderService extends Service {
     feasibleModes = Collections.emptyList();
     codecMime = CodecPolicy.AVC;
     hdrActive = false;
+    capabilities = CameraCapabilities.NONE;
     for (String id : ids) {
       CameraCharacteristics c;
       try { c = manager.getCameraCharacteristics(id); } catch (CameraAccessException e) { continue; }
@@ -899,17 +907,32 @@ public final class OfflineRecorderService extends Service {
       rotation = CameraGeometry.rotation(sensorOrientation, displayDegrees, frontFacing);
       realtimeSensor = Objects.equals(c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME);
       activeArray = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+      int[] afModes = c.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+      continuousVideoAf = continuousPictureAf = autoAf = false;
+      if (afModes != null)
+        for (int mode : afModes) {
+          if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) continuousVideoAf = true;
+          else if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE) continuousPictureAf = true;
+          else if (mode == CaptureRequest.CONTROL_AF_MODE_AUTO) autoAf = true;
+        }
+      Integer aeRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
+      maxAeRegions = aeRegions == null ? 0 : aeRegions;
+      aeLockAvailable = Boolean.TRUE.equals(c.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE));
+      awbLockAvailable = Boolean.TRUE.equals(c.get(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE));
       int[] stabilizationModes = c.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
       int[] opticalModes = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
       android.util.Range<Float> zoomRange =
           Build.VERSION.SDK_INT >= 30 ? c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) : null;
       Float maxDigitalZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
-      boolean zoomAvailable = zoomRange != null
+      boolean zoomRangeUsable = zoomRange != null && zoomRange.getUpper() > zoomRange.getLower() + 0.001f;
+      boolean zoomAvailable = zoomRangeUsable
           || (activeArray != null && maxDigitalZoom != null && maxDigitalZoom > 1.05f);
+      zoomRatioSupported = zoomRangeUsable;
       float zoomMin = zoomRange != null ? zoomRange.getLower() : 1f;
       float zoomMax = zoomRange != null
           ? zoomRange.getUpper()
           : (maxDigitalZoom == null ? 1f : Math.min(maxDigitalZoom, 8f));
+      zoomRatio = ZoomPolicy.clamp(zoomRatio, zoomMin, Math.min(zoomMax, 8f));
       Integer afRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
       capabilities = new CameraCapabilities(
           StabilizationPolicy.videoStabilization(stabilizationModes),
@@ -953,31 +976,43 @@ public final class OfflineRecorderService extends Service {
     // OIS+EIS on Pixel-class devices, and AOSP warns against explicitly combining both.
     if (oisOffered && stabMode == StabilizationPolicy.NONE)
       request.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
-    request.set(CaptureRequest.CONTROL_AF_MODE,
-        focusLock ? CaptureRequest.CONTROL_AF_MODE_AUTO : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
-    if (focusPoint != null && activeArray != null && capabilities.maxAfRegions > 0) {
+    int af = CaptureRequest.CONTROL_AF_MODE_OFF;
+    if (focusLock && autoAf) af = CaptureRequest.CONTROL_AF_MODE_AUTO;
+    else if (!focusLock && continuousVideoAf) af = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO;
+    else if (!focusLock && continuousPictureAf) af = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+    request.set(CaptureRequest.CONTROL_AF_MODE, af);
+    float appliedZoom = zoomSupported
+        ? ZoomPolicy.clamp(zoomRatio, capabilities.zoomMin, Math.min(capabilities.zoomMax, 8f))
+        : 1f;
+    float visibleZoom = Math.max(1f, appliedZoom);
+    if (focusPoint != null && activeArray != null && (capabilities.maxAfRegions > 0 || maxAeRegions > 0)) {
+      float focusU = Math.max(0f, Math.min(1f, 0.5f + (focusPoint[0] - 0.5f) / visibleZoom));
+      float focusV = Math.max(0f, Math.min(1f, 0.5f + (focusPoint[1] - 0.5f) / visibleZoom));
       android.util.Size regionSize =
           new android.util.Size(Math.max(1, activeArray.width() / 10), Math.max(1, activeArray.height() / 10));
-      int left = Math.round(focusPoint[0] * activeArray.width()) - regionSize.getWidth() / 2;
-      int top = Math.round(focusPoint[1] * activeArray.height()) - regionSize.getHeight() / 2;
+      int left = activeArray.left + Math.round(focusU * activeArray.width()) - regionSize.getWidth() / 2;
+      int top = activeArray.top + Math.round(focusV * activeArray.height()) - regionSize.getHeight() / 2;
       left = Math.max(activeArray.left, Math.min(activeArray.right - regionSize.getWidth(), left));
       top = Math.max(activeArray.top, Math.min(activeArray.bottom - regionSize.getHeight(), top));
       MeteringRectangle rect = new MeteringRectangle(
           left, top, regionSize.getWidth(), regionSize.getHeight(), MeteringRectangle.METERING_WEIGHT_MAX);
-      request.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[] {rect});
-      request.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[] {rect});
+      if (capabilities.maxAfRegions > 0)
+        request.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[] {rect});
+      if (maxAeRegions > 0)
+        request.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[] {rect});
     }
     if (focusLock) {
-      request.set(CaptureRequest.CONTROL_AE_LOCK, true);
-      request.set(CaptureRequest.CONTROL_AWB_LOCK, true);
+      if (aeLockAvailable) request.set(CaptureRequest.CONTROL_AE_LOCK, true);
+      if (awbLockAvailable) request.set(CaptureRequest.CONTROL_AWB_LOCK, true);
     }
     if (torchOn) request.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
-    if (zoomRatio > 1f && zoomSupported) {
-      if (Build.VERSION.SDK_INT >= 30) request.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoomRatio);
-      else if (activeArray != null) {
-        float[] region = ZoomPolicy.cropRegion(zoomRatio, activeArray.width(), activeArray.height());
+    if (zoomSupported && appliedZoom != 1f) {
+      if (zoomRatioSupported) request.set(CaptureRequest.CONTROL_ZOOM_RATIO, appliedZoom);
+      else if (appliedZoom > 1f && activeArray != null) {
+        float[] region = ZoomPolicy.cropRegion(appliedZoom, activeArray.width(), activeArray.height());
         request.set(CaptureRequest.SCALER_CROP_REGION, new android.graphics.Rect(
-            Math.round(region[0]), Math.round(region[1]), Math.round(region[2]), Math.round(region[3])));
+            activeArray.left + Math.round(region[0]), activeArray.top + Math.round(region[1]),
+            activeArray.left + Math.round(region[2]), activeArray.top + Math.round(region[3])));
       }
     }
     return request;
@@ -991,8 +1026,9 @@ public final class OfflineRecorderService extends Service {
           baseRequest(sessionRecording ? CameraDevice.TEMPLATE_RECORD : CameraDevice.TEMPLATE_PREVIEW);
       for (Surface surface : sessionSurfaces) request.addTarget(surface);
       session.setRepeatingRequest(request.build(), sessionCallback, cameraHandler);
-    } catch (Exception ignored) {
+    } catch (Exception e) {
       // Live control updates are best effort; the base session remains valid.
+      android.util.Log.w("StereoRecorder", "Live control update failed", e);
     }
   }
 
