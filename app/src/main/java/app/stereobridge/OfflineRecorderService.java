@@ -144,12 +144,12 @@ public final class OfflineRecorderService extends Service {
 
   private volatile boolean preparingCamera;
   private volatile String startupCameraFailure;
-  private final Set<String> rejectedModes = new HashSet<>();
+  private final Set<String> rejectedModes = java.util.concurrent.ConcurrentHashMap.newKeySet();
   private String selectedMode;
-  private VideoMode mode;
-  private List<VideoMode> feasibleModes = Collections.emptyList();
-  private String codecMime = CodecPolicy.AVC;
-  private boolean hdrActive;
+  private volatile VideoMode mode;
+  private volatile List<VideoMode> feasibleModes = Collections.emptyList();
+  private volatile String codecMime = CodecPolicy.AVC;
+  private volatile boolean hdrActive;
 
   private boolean realtimeSensor;
   private OfflineVideoEncoder encoder;
@@ -731,6 +731,10 @@ public final class OfflineRecorderService extends Service {
     List<String> ids = new ArrayList<>(Arrays.asList(manager.getCameraIdList()));
     ids.sort((a, b) -> Integer.compare(facingRank(manager, a, wantFront), facingRank(manager, b, wantFront)));
     selectedMode = null;
+    mode = null;
+    feasibleModes = Collections.emptyList();
+    codecMime = CodecPolicy.AVC;
+    hdrActive = false;
     for (String id : ids) {
       CameraCharacteristics c;
       try { c = manager.getCameraCharacteristics(id); } catch (CameraAccessException e) { continue; }
@@ -762,17 +766,20 @@ public final class OfflineRecorderService extends Service {
       VideoMode chosen = null;
       String chosenMime = null;
       for (VideoMode candidate : ordered) {
-        String mime = firstSupportedCodec(candidate);
-        if (preparingCamera && rejectedModes.contains(candidate.key() + ":" + mime)) continue;
-        chosen = candidate;
-        chosenMime = mime;
-        break;
+        for (String mime : CodecPolicy.order(settings.get("video_codec", "avc"))) {
+          if (!OfflineVideoEncoder.supportsVideo(candidate.width, candidate.height, candidate.rate, mime)) continue;
+          if (preparingCamera && rejectedModes.contains(id + ":" + candidate.key() + ":" + mime)) continue;
+          chosen = candidate;
+          chosenMime = mime;
+          break;
+        }
+        if (chosen != null) break;
       }
       if (chosen == null) continue;
       mode = chosen;
       codecMime = chosenMime;
       feasibleModes = ordered;
-      selectedMode = chosen.key() + ":" + chosenMime;
+      selectedMode = id + ":" + chosen.key() + ":" + chosenMime;
       size = new Size(chosen.width, chosen.height);
       int[] ae = ModeMatrixPolicy.aeRange(ranges, chosen.rate);
       fps = new Range<>(ae[0], ae[1]);
