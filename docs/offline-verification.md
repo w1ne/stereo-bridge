@@ -15,6 +15,10 @@ First use requires pairing both original DJI Mic Mini transmitters in Android Se
 - Permission-denial recovery, optional-notification capture, low-storage reserve, disconnect errors and repeated-session cleanup are covered by focused checks.
 - Independent spec and quality reviews found issues in descriptor lifetime, camera fallback, permission prompts and UI recovery; these were addressed. Final review and candidate-specific hardware checks are recorded separately from earlier releases.
 
+## Camera video parity candidate (unreleased)
+
+Unit and emulator checks pass on the camera parity branch (144 unit tests). Physical results are recorded incrementally in the implementation plan (docs/superpowers/plans/2026-10-18-camera-video-parity.md, Task 13) as each check completes. Until physical takes are attached, no parity claim is made. Known verification gaps: API 29 emulator smoke was blocked locally by missing system image and low host resources; the hosted workflow remains the emulator gate.
+
 ## Local package checks (code 6)
 
 106 unit tests passed with zero failures/errors. Release lint reported zero errors and nine warnings. Debug APK, signed release APK and signed AAB built successfully. APK signature, 16 KiB ZIP alignment and native LOAD alignment passed for all three ABIs. Bundled privacy text exactly matches PRIVACY.md. Final focused independent source review found no critical or important issues.

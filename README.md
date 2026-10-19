@@ -13,6 +13,7 @@ An open-source Android recorder that connects directly to two original DJI Mic M
 For interviews, conversations and two-person recordings, separate microphone channels let you adjust each voice independently in your editor. Stereo Bridge keeps the setup small: your phone and two transmitters. The app decodes audio locally and records video with its own camera screen.
 
 - **Separate voices:** one mic on the left channel, one on the right; independent meters, gain, mute and channel swap.
+- **Camera parity where the hardware allows:** 4K30/4K60/1080p60/1080p30, video stabilization, tap-to-focus, zoom, torch, camera flip, and 10-bit HDR on supporting devices.
 - **One-button capture:** with both paired mics powered on, open the app and tap **Record**. Tap **Stop** to save to **Movies / Stereo Bridge**.
 - **Offline by design:** no account, ads, analytics, Internet permission, Wi-Fi or debugging setup.
 - **Ordinary permissions:** camera and paired Bluetooth access; recording notifications are optional.
@@ -26,7 +27,7 @@ For interviews, conversations and two-person recordings, separate microphone cha
 2. Open Stereo Bridge and grant Camera and Nearby devices access (Android 12+).
 3. Tap **Record**, then **Stop**. Use **Open last video** to watch the saved take.
 
-Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and both transmitters powered on. Setup and controls survive phone reboots; recording starts only when you tap Record.
+Android 10/11 use ordinary legacy Bluetooth access. Keep Bluetooth enabled and both transmitters powered on. Setup and controls survive phone reboots; recording starts only when you tap Record. Camera features are negotiated from advertised capabilities, so non-Pixel Android 10+ phones keep working with the best modes and controls their hardware supports.
 
 ## Release status
 
