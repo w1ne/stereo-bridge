@@ -1,6 +1,7 @@
 package app.stereobridge;
 
 import android.app.Activity;
+import android.content.res.Configuration;
 import android.graphics.*;
 import android.view.*;
 import android.widget.*;
@@ -23,7 +24,8 @@ final class CameraControls {
   private final ScaleGestureDetector scale;
   private final LinearLayout actions;
   private final FrameLayout.LayoutParams modeParams, actionsParams, lockParams, zoomParams;
-  private final int pad;
+  private final int pad, bottomGap;
+  private int safeLeft = -1, safeTop = -1, safeRight = -1, safeBottom = -1;
   private float currentZoom = 1f;
   private boolean scaling;
   private final Listener listener;
@@ -36,6 +38,7 @@ final class CameraControls {
   CameraControls(Activity activity, FrameLayout frame, Ui ui, Listener listener) {
     this.listener = listener;
     pad = ui.dp(16);
+    bottomGap = ui.dp(12);
     modeChip = chip(activity, ui, 13);
     zoomChip = chip(activity, ui, 13);
     torchChip = chip(activity, ui, 13);
@@ -54,6 +57,8 @@ final class CameraControls {
     frame.addView(modeChip, modeParams);
     actions = new LinearLayout(activity);
     actions.setOrientation(LinearLayout.HORIZONTAL);
+    actions.setClickable(true);
+    actions.setFocusable(false);
     actions.addView(flipChip, new LinearLayout.LayoutParams(-2, -2));
     LinearLayout.LayoutParams torchParams = new LinearLayout.LayoutParams(-2, -2);
     torchParams.leftMargin = ui.dp(8);
@@ -61,11 +66,15 @@ final class CameraControls {
     actionsParams = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
     actionsParams.setMargins(pad, pad, pad, pad);
     frame.addView(actions, actionsParams);
+    boolean landscape =
+        activity.getResources().getConfiguration().orientation
+            == Configuration.ORIENTATION_LANDSCAPE;
+    int clearance = ui.dp(landscape ? 170 : 280);
     lockParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-    lockParams.setMargins(pad, pad, pad, ui.dp(200));
+    lockParams.setMargins(pad, pad, pad, clearance);
     frame.addView(lockChip, lockParams);
     zoomParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
-    zoomParams.setMargins(pad, pad, pad, ui.dp(200));
+    zoomParams.setMargins(pad, pad, pad, clearance);
     frame.addView(zoomChip, zoomParams);
     modeChip.setOnClickListener(v -> listener.onMode());
     flipChip.setOnClickListener(v -> listener.onFlip());
@@ -192,11 +201,20 @@ final class CameraControls {
     return chip;
   }
 
-  void setVerticalInsets(int top, int bottom) {
-    modeParams.topMargin = top + pad;
-    actionsParams.topMargin = top + pad;
-    lockParams.bottomMargin = bottom + pad;
-    zoomParams.bottomMargin = bottom + pad;
+  void setSafeInsets(int left, int top, int right, int bottom) {
+    if (left == safeLeft && top == safeTop && right == safeRight && bottom == safeBottom) return;
+    safeLeft = left;
+    safeTop = top;
+    safeRight = right;
+    safeBottom = bottom;
+    modeParams.leftMargin = pad + left;
+    modeParams.topMargin = pad + top;
+    actionsParams.rightMargin = pad + right;
+    actionsParams.topMargin = pad + top;
+    lockParams.leftMargin = pad + left;
+    lockParams.bottomMargin = bottom + bottomGap;
+    zoomParams.rightMargin = pad + right;
+    zoomParams.bottomMargin = bottom + bottomGap;
     modeChip.setLayoutParams(modeParams);
     actions.setLayoutParams(actionsParams);
     lockChip.setLayoutParams(lockParams);

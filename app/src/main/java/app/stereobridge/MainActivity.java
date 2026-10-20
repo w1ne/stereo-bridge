@@ -25,6 +25,7 @@ public final class MainActivity extends Activity {
   private CameraControls controls;
   private FrameLayout previewFrame;
   private LinearLayout topPanel, bottomPanel;
+  private int safeLeft, safeRight;
   private TextView status, leftLabel, rightLabel, timer;
   private Button record, last;
   private Meter leftMeter, rightMeter;
@@ -54,17 +55,22 @@ public final class MainActivity extends Activity {
 
   private void build() {
     getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));
+    getWindow().setStatusBarColor(Color.TRANSPARENT);
+    getWindow().setNavigationBarColor(Color.TRANSPARENT);
+    WindowManager.LayoutParams window = getWindow().getAttributes();
+    window.layoutInDisplayCutoutMode =
+        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+    getWindow().setAttributes(window);
     View decor = getWindow().getDecorView();
+    boolean dark = Ui.isDark(this);
     if (Build.VERSION.SDK_INT >= 30) {
       getWindow().setDecorFitsSystemWindows(false);
-      getWindow().setStatusBarColor(Color.TRANSPARENT);
-      getWindow().setNavigationBarColor(Color.TRANSPARENT);
       WindowInsetsController controller = decor.getWindowInsetsController();
       if (controller != null) {
         int mask =
             WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                 | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-        controller.setSystemBarsAppearance(ui.dark ? 0 : mask, mask);
+        controller.setSystemBarsAppearance(dark ? 0 : mask, mask);
       }
     } else {
       int mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
@@ -72,7 +78,7 @@ public final class MainActivity extends Activity {
           View.SYSTEM_UI_FLAG_LAYOUT_STABLE
               | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
               | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-              | (ui.dark ? 0 : mask));
+              | (dark ? 0 : mask));
     }
     FrameLayout root = new FrameLayout(this);
     root.setBackgroundColor(Color.BLACK);
@@ -165,36 +171,14 @@ public final class MainActivity extends Activity {
                     (modeKey, hdr, codec) -> recorder.requestMode(modeKey, hdr, codec));
               }
             });
-    topPanel = new LinearLayout(this);
-    topPanel.setOrientation(LinearLayout.VERTICAL);
-    topPanel.setBackground(ui.shape(ui.dark ? 0xCC171F2B : 0xE6FFFFFF, 18, false));
-    LinearLayout titleRow = new LinearLayout(this);
-    titleRow.setOrientation(LinearLayout.HORIZONTAL);
-    titleRow.setGravity(Gravity.CENTER_VERTICAL);
-    TextView title = ui.text("STEREO BRIDGE", 11, true);
-    title.setLetterSpacing(0.12f);
-    title.setTextColor(ui.secondary);
-    titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-    timer = ui.caption("");
-    timer.setGravity(Gravity.END);
-    timer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-    titleRow.addView(timer);
-    topPanel.addView(titleRow);
-    status = ui.text("Ready to record", 17, true);
-    LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
-    statusParams.topMargin = ui.dp(2);
-    topPanel.addView(status, statusParams);
-    topPanel.setPadding(ui.dp(18), ui.dp(10), ui.dp(18), ui.dp(10));
-    FrameLayout.LayoutParams topParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-    topParams.setMargins(ui.dp(12), 0, ui.dp(12), 0);
-    root.addView(topPanel, topParams);
-
-    bottomPanel = new LinearLayout(this);
-    bottomPanel.setOrientation(LinearLayout.VERTICAL);
-    bottomPanel.setBackground(ui.shape(ui.dark ? 0xE6171F2B : 0xE6FFFFFF, 22, false));
-    bottomPanel.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12));
+    boolean landscape =
+        getResources().getConfiguration().orientation
+            == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
     LinearLayout actions = new LinearLayout(this);
     actions.setOrientation(LinearLayout.HORIZONTAL);
+    actions.setGravity(Gravity.CENTER_VERTICAL);
+    actions.setClickable(true);
+    actions.setFocusable(false);
     last =
         ui.button(
             actions,
@@ -214,14 +198,54 @@ public final class MainActivity extends Activity {
                       .show();
                 }
             });
-    compact(last);
-    compact(ui.button(actions, "More", false, this::showMore));
-    bottomPanel.addView(actions);
+    compact(last, !landscape);
+    compact(ui.button(actions, "More", false, this::showMore), !landscape);
+
+    topPanel = new LinearLayout(this);
+    topPanel.setOrientation(LinearLayout.VERTICAL);
+    topPanel.setBackground(ui.shape(ui.dark ? 0xCC171F2B : 0xE6FFFFFF, 18, false));
+    topPanel.setClickable(true);
+    topPanel.setFocusable(false);
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    TextView title = ui.text("STEREO BRIDGE", 11, true);
+    title.setLetterSpacing(0.12f);
+    title.setTextColor(ui.secondary);
+    titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+    timer = ui.caption("");
+    timer.setGravity(Gravity.END);
+    timer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    titleRow.addView(timer);
+    if (landscape) {
+      LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
+      actionParams.leftMargin = ui.dp(8);
+      titleRow.addView(actions, actionParams);
+    }
+    topPanel.addView(titleRow);
+    status = ui.text("Ready to record", 17, true);
+    LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
+    statusParams.topMargin = ui.dp(2);
+    topPanel.addView(status, statusParams);
+    topPanel.setPadding(ui.dp(18), ui.dp(10), ui.dp(18), ui.dp(10));
+    FrameLayout.LayoutParams topParams = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+    topParams.setMargins(ui.dp(12), 0, ui.dp(12), 0);
+    root.addView(topPanel, topParams);
+
+    bottomPanel = new LinearLayout(this);
+    bottomPanel.setOrientation(LinearLayout.VERTICAL);
+    bottomPanel.setBackground(ui.shape(ui.dark ? 0xE6171F2B : 0xE6FFFFFF, 22, false));
+    bottomPanel.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12));
+    bottomPanel.setClickable(true);
+    bottomPanel.setFocusable(false);
+    if (!landscape) bottomPanel.addView(actions);
 
     LinearLayout mics = new LinearLayout(this);
     mics.setOrientation(LinearLayout.VERTICAL);
     mics.setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10));
     mics.setBackground(ui.shape(ui.dark ? 0xCC0C1118 : 0xCCF3F5F8, 16, false));
+    mics.setClickable(true);
+    mics.setFocusable(false);
     leftLabel = ui.caption("");
     leftMeter = new Meter(ui.accent);
     mics.addView(micRow(leftLabel, leftMeter));
@@ -229,18 +253,33 @@ public final class MainActivity extends Activity {
     rightLabel = ui.caption("");
     rightMeter = new Meter(ui.blue);
     mics.addView(micRow(rightLabel, rightMeter));
-    LinearLayout.LayoutParams micsParams = new LinearLayout.LayoutParams(-1, -2);
-    micsParams.topMargin = ui.dp(6);
-    bottomPanel.addView(mics, micsParams);
 
-    record = ui.button(bottomPanel, "Record", true, this::recordOrStop);
-    TextView hint =
-        ui.caption(
-            "Tap Record to connect both mics and start video. Tap Stop to save."
-                + " Capture continues with the screen asleep or another app open.");
-    hint.setGravity(Gravity.CENTER);
-    hint.setTextSize(13);
-    bottomPanel.addView(hint);
+    if (landscape) {
+      LinearLayout row = new LinearLayout(this);
+      row.setOrientation(LinearLayout.HORIZONTAL);
+      row.setGravity(Gravity.CENTER_VERTICAL);
+      row.addView(mics, new LinearLayout.LayoutParams(0, -2, 1));
+      record = ui.button(row, "Record", true, this::recordOrStop);
+      LinearLayout.LayoutParams recordParams =
+          (LinearLayout.LayoutParams) record.getLayoutParams();
+      recordParams.width = ui.dp(220);
+      recordParams.height = -1;
+      recordParams.topMargin = 0;
+      recordParams.bottomMargin = 0;
+      recordParams.leftMargin = ui.dp(8);
+      bottomPanel.addView(row);
+    } else {
+      LinearLayout.LayoutParams micsParams = new LinearLayout.LayoutParams(-1, -2);
+      micsParams.topMargin = ui.dp(6);
+      bottomPanel.addView(mics, micsParams);
+      record = ui.button(bottomPanel, "Record", true, this::recordOrStop);
+      TextView hint =
+          ui.caption("Tap Record to start; Stop saves. Capture continues with the screen off.");
+      hint.setGravity(Gravity.CENTER);
+      hint.setTextSize(10.5f);
+      hint.setSingleLine(true);
+      bottomPanel.addView(hint);
+    }
 
     FrameLayout.LayoutParams bottomParams =
         new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
@@ -250,10 +289,12 @@ public final class MainActivity extends Activity {
     root.setOnApplyWindowInsetsListener(
         (v, insets) -> {
           int[] bars = systemBars(insets);
+          safeLeft = bars[0];
+          safeRight = bars[2];
           topPanel.setPadding(
-              ui.dp(18), bars[1] + ui.dp(10), ui.dp(18), ui.dp(10));
+              ui.dp(18) + bars[0], bars[1] + ui.dp(10), ui.dp(18) + bars[2], ui.dp(10));
           bottomPanel.setPadding(
-              ui.dp(16), ui.dp(12), ui.dp(16), bars[3] + ui.dp(12));
+              ui.dp(16) + bars[0], ui.dp(12), ui.dp(16) + bars[2], bars[3] + ui.dp(12));
           updateControlClearance();
           return insets;
         });
@@ -268,14 +309,14 @@ public final class MainActivity extends Activity {
     refresh();
   }
 
-  private void compact(Button button) {
+  private void compact(Button button, boolean fill) {
     button.setTextSize(14);
-    button.setMinHeight(ui.dp(40));
-    button.setMinimumHeight(ui.dp(40));
-    button.setPadding(ui.dp(10), 0, ui.dp(10), 0);
+    button.setMinHeight(ui.dp(48));
+    button.setMinimumHeight(ui.dp(48));
+    button.setPadding(ui.dp(12), 0, ui.dp(12), 0);
     LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) button.getLayoutParams();
-    params.width = 0;
-    params.weight = 1;
+    params.width = fill ? 0 : -2;
+    params.weight = fill ? 1 : 0;
     params.topMargin = 0;
     params.bottomMargin = 0;
     params.setMarginStart(ui.dp(4));
@@ -295,7 +336,7 @@ public final class MainActivity extends Activity {
 
   private void updateControlClearance() {
     if (controls == null || topPanel.getHeight() == 0 || bottomPanel.getHeight() == 0) return;
-    controls.setVerticalInsets(topPanel.getHeight(), bottomPanel.getHeight() + ui.dp(8));
+    controls.setSafeInsets(safeLeft, topPanel.getHeight(), safeRight, bottomPanel.getHeight());
   }
 
   private static int[] systemBars(WindowInsets insets) {
