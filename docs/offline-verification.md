@@ -15,6 +15,10 @@ First use requires pairing both original DJI Mic Mini transmitters in Android Se
 - Permission-denial recovery, optional-notification capture, low-storage reserve, disconnect errors and repeated-session cleanup are covered by focused checks.
 - Independent spec and quality reviews found issues in descriptor lifetime, camera fallback, permission prompts and UI recovery; these were addressed. Final review and candidate-specific hardware checks are recorded separately from earlier releases.
 
+## Camera video parity candidate (unreleased)
+
+143 unit tests pass on the camera parity branch (head 86b1560). Local API 29 emulator smoke was blocked by a missing system image and low host resources; the hosted CI workflow passed on that head — build, unit/lint gate, API 29 emulator smoke (repeated synthetic take, background/screen sleep, reboot) and stereo MP4 verification: https://github.com/w1ne/stereo-bridge/actions/runs/39280061325. Physical takes are not attached yet and no parity claim is made. Physical results are recorded incrementally in the implementation plan (docs/superpowers/plans/2026-10-18-camera-video-parity.md, Task 13) as each check completes.
+
 ## Local package checks (code 6)
 
 106 unit tests passed with zero failures/errors. Release lint reported zero errors and nine warnings. Debug APK, signed release APK and signed AAB built successfully. APK signature, 16 KiB ZIP alignment and native LOAD alignment passed for all three ABIs. Bundled privacy text exactly matches PRIVACY.md. Final focused independent source review found no critical or important issues.

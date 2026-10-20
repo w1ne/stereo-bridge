@@ -38,16 +38,20 @@ public final class OfflineVideoEncoder {
   }
 
   public OfflineVideoEncoder(File output, int width, int height, int rotation, int rate) throws IOException {
-    this(output.getAbsolutePath(), null, width, height, rotation, rate);
+    this(output.getAbsolutePath(), null, width, height, rotation, rate, CodecPolicy.AVC, false);
   }
 
   public OfflineVideoEncoder(FileDescriptor output, int width, int height, int rotation, int rate) throws IOException {
-    this(null, java.util.Objects.requireNonNull(output), width, height, rotation, rate);
+    this(null, java.util.Objects.requireNonNull(output), width, height, rotation, rate, CodecPolicy.AVC, false);
   }
 
-  private OfflineVideoEncoder(String path, FileDescriptor descriptor, int width, int height, int rotation, int rate) throws IOException {
+  public OfflineVideoEncoder(FileDescriptor output, int width, int height, int rotation, int rate, String mime, boolean hdr) throws IOException {
+    this(null, java.util.Objects.requireNonNull(output), width, height, rotation, rate, mime, hdr);
+  }
+
+  private OfflineVideoEncoder(String path, FileDescriptor descriptor, int width, int height, int rotation, int rate, String mime, boolean hdr) throws IOException {
     try {
-      video = configuredVideo(width, height, rate);
+      video = configuredVideo(width, height, rate, mime, hdr);
       surface = video.createInputSurface();
       audio = configuredAudio();
       muxer = descriptor == null
@@ -61,9 +65,9 @@ public final class OfflineVideoEncoder {
   }
 
   /** Select an encoder for this exact surface format, including advertised rate limits. */
-  static MediaFormat videoFormat(MediaCodecInfo info, int width, int height, int requestedFps) {
+  static MediaFormat videoFormat(MediaCodecInfo info, String mime, int width, int height, int requestedFps, boolean hdr) {
     try {
-      MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType("video/avc");
+      MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(mime);
       boolean surface = false;
       for (int color : caps.colorFormats)
         if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) surface = true;
@@ -71,47 +75,75 @@ public final class OfflineVideoEncoder {
       MediaCodecInfo.VideoCapabilities v = caps.getVideoCapabilities();
       if (!v.isSizeSupported(width, height)) return null;
       android.util.Range<Double> rates = v.getSupportedFrameRatesFor(width, height);
-      int rate = VideoCapabilityPolicy.rate(requestedFps,rates.getLower(),rates.getUpper());
-      // Camera and encoder must agree on the same rate. A smaller camera candidate can retry.
+      int rate = VideoCapabilityPolicy.rate(requestedFps, rates.getLower(), rates.getUpper());
       if (rate != requestedFps) return null;
-      MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
+      MediaFormat format = MediaFormat.createVideoFormat(mime, width, height);
       format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
       format.setInteger(MediaFormat.KEY_FRAME_RATE, rate);
-      format.setInteger(MediaFormat.KEY_BIT_RATE, VideoCapabilityPolicy.bitrate(width,height,rate,v.getBitrateRange().getLower(),v.getBitrateRange().getUpper()));
+      format.setInteger(MediaFormat.KEY_BIT_RATE, VideoCapabilityPolicy.bitrate(width, height, rate, v.getBitrateRange().getLower(), v.getBitrateRange().getUpper()));
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-      int baselineLevel = 0;
-      for (MediaCodecInfo.CodecProfileLevel profile : caps.profileLevels)
-        if (profile.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
-          baselineLevel = Math.max(baselineLevel, profile.level);
-      if (baselineLevel != 0) {
-        format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-        // Legacy OMX requires level with profile. Use the highest advertised level.
-        format.setInteger(MediaFormat.KEY_LEVEL, baselineLevel);
+      if (!CodecPolicy.HEVC.equals(mime) && !CodecPolicy.AVC.equals(mime)) return null;
+      int profile = 0, level = 0;
+      for (MediaCodecInfo.CodecProfileLevel candidate : caps.profileLevels) {
+        if (CodecPolicy.HEVC.equals(mime)) {
+          boolean family = hdr
+              ? candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
+                  || candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10
+              : candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain;
+          boolean prefer = hdr && candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10;
+          if (family && (candidate.level > level || (candidate.level == level && prefer))) {
+            profile = candidate.profile; level = candidate.level;
+          }
+        } else {
+          boolean family = candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh
+              || candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline;
+          boolean prefer = candidate.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh;
+          if (family && (candidate.level > level || (candidate.level == level && prefer))) {
+            profile = candidate.profile; level = candidate.level;
+          }
+        }
       }
+      if (profile == 0) {
+        return CodecPolicy.AVC.equals(mime) && caps.isFormatSupported(format) ? format : null;
+      }
+      format.setInteger(MediaFormat.KEY_PROFILE, profile);
+      // Legacy OMX requires a level whenever a profile is set (Android 10 ACodec regression).
+      format.setInteger(MediaFormat.KEY_LEVEL, level);
       return caps.isFormatSupported(format) ? format : null;
     } catch (IllegalArgumentException e) { return null; }
   }
 
-  static boolean supportsVideo(int width, int height, int rate) {
+  static boolean supportsVideo(int width, int height, int rate, String mime) {
     for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
-      if (info.isEncoder() && videoFormat(info, width, height, rate) != null) return true;
+      if (info.isEncoder() && videoFormat(info, mime, width, height, rate, false) != null) return true;
     return false;
   }
 
-  private static MediaCodec configuredVideo(int width, int height, int rate) throws IOException {
+  static boolean supportsHlgEncode(int width, int height, int rate) {
+    if (android.os.Build.VERSION.SDK_INT < 33 || rate != 30) return false;
+    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
+      if (info.isEncoder() && videoFormat(info, CodecPolicy.HEVC, width, height, rate, true) != null) return true;
+    return false;
+  }
+
+  private static MediaCodec configuredVideo(int width, int height, int rate, String mime, boolean hdr) throws IOException {
     Throwable last = null;
-    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
-      if (!info.isEncoder()) continue;
-      MediaFormat format = videoFormat(info, width, height, rate);
-      if (format == null) continue;
-      MediaCodec codec = null;
-      try {
-        codec = MediaCodec.createByCodecName(info.getName());
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        return codec;
-      } catch (Exception e) { last = e; if (codec != null) codec.release(); }
+    for (String candidateMime : hdr ? new String[] {CodecPolicy.HEVC} : CodecPolicy.order(mime)) {
+      for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+        if (!info.isEncoder()) continue;
+        MediaFormat format = videoFormat(info, candidateMime, width, height, rate, hdr);
+        if (format == null) continue;
+        MediaCodec codec = null;
+        try {
+          codec = MediaCodec.createByCodecName(info.getName());
+          codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+          return codec;
+        } catch (Exception e) { last = e; if (codec != null) codec.release(); }
+      }
     }
-    throw new IOException("No compatible AVC surface encoder", last);
+    String attempted = hdr ? CodecPolicy.HEVC : mime;
+    throw new IOException("No compatible surface encoder for " + attempted
+        + (hdr ? " HDR" : "") + " " + width + "x" + height + "@" + rate, last);
   }
 
   private static MediaCodec configuredAudio() throws IOException {
