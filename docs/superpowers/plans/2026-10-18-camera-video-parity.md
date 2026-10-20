@@ -2017,3 +2017,5 @@ In `CameraControls`, lay out: mode chip top-start; flip and torch in one top-end
 - [ ] **Step 4: Verify**
 
 `ANDROID_HOME=/home/andrii/Android/Sdk ./gradlew testDebugUnitTest lintRelease assembleDebug` green (143 tests, 0 lint errors); hosted CI emulator smoke must still find the preserved texts. Install `app-debug.apk` on the connected Pixel and capture a screenshot confirming the edge-to-edge preview and overlaid mic meters. Commit with message: `Make the camera screen full screen with overlay controls`.
+
+Execution note (commits 0c51250 + 191df9e): the full-screen layout was rebuilt after review to add landscape composition, four-side safe insets, API 29–34 edge-to-edge, and overlay touch consumption. Verified on emulator screenshots; Pixel install/rotation check pending device reconnection.
