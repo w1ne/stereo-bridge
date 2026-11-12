@@ -5,3 +5,6 @@ dependencyResolutionManagement {
 }
 rootProject.name='StereoBridge'
 include ':app'
+// Local prototype only; excluded from the published app.
+include ':cameraHandoff'
+project(':cameraHandoff').projectDir = file('experiments/camera-handoff')

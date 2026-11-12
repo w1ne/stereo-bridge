@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+ <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+ <queries><intent><action android:name="android.media.action.VIDEO_CAPTURE"/></intent></queries>
+ <application android:label="Stereo Bridge · Camera test" android:allowBackup="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+  <provider android:name=".CaptureProvider" android:authorities="app.stereobridge.handoff.test.capture" android:exported="false" android:grantUriPermissions="true"/>
+  <service android:name=".MicCaptureService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
+  <activity android:name=".HandoffActivity" android:exported="true">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
+ </application>
+</manifest>
