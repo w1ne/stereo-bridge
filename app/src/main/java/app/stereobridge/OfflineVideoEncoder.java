@@ -88,7 +88,6 @@ public final class OfflineVideoEncoder {
         if (CodecPolicy.HEVC.equals(mime)) {
           boolean family = hdr
               ? candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
-                  || candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10
               : candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain;
           boolean prefer = hdr && candidate.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10;
           if (family && (candidate.level > level || (candidate.level == level && prefer))) {
@@ -107,6 +106,13 @@ public final class OfflineVideoEncoder {
         return CodecPolicy.AVC.equals(mime) && caps.isFormatSupported(format) ? format : null;
       }
       format.setInteger(MediaFormat.KEY_PROFILE, profile);
+      if (hdr) {
+        // HLG uses Main10 with BT.2020 limited-range color; HDR10's PQ profile is distinct.
+        format.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020);
+        format.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED);
+        format.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG);
+        format.setFeatureEnabled(MediaCodecInfo.CodecCapabilities.FEATURE_HdrEditing, true);
+      }
       // Legacy OMX requires a level whenever a profile is set (Android 10 ACodec regression).
       format.setInteger(MediaFormat.KEY_LEVEL, level);
       return caps.isFormatSupported(format) ? format : null;

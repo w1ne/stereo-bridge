@@ -55,11 +55,18 @@ public class ModeMatrixPolicyTest {
   assertFalse(ModeMatrixPolicy.compatSize(0, 0));
  }
  @Test public void compatRatePrefers30Then24() {
-  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{15, 30}}));
-  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{24, 30}}));
-  assertEquals(24, ModeMatrixPolicy.compatRate(new int[][] {{24, 24}, {60, 60}}));
-  assertEquals(0, ModeMatrixPolicy.compatRate(new int[][] {{60, 60}}));
-  assertEquals(0, ModeMatrixPolicy.compatRate(null));
+  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{15, 30}}, 0, 0));
+  assertEquals(30, ModeMatrixPolicy.compatRate(new int[][] {{24, 30}}, 0, 0));
+  assertEquals(24, ModeMatrixPolicy.compatRate(new int[][] {{24, 24}, {60, 60}}, 0, 0));
+  assertEquals(0, ModeMatrixPolicy.compatRate(new int[][] {{60, 60}}, 0, 0));
+  assertEquals(0, ModeMatrixPolicy.compatRate(null, 0, 0));
+ }
+ @Test public void compatRateUsesTheSlowestConfiguredOutput() {
+  int[][] ranges = {{15, 30}};
+  assertEquals(30, ModeMatrixPolicy.compatRate(ranges, 33_333_334L, 0));
+  assertEquals(24, ModeMatrixPolicy.compatRate(ranges, 41_666_667L, 33_333_334L));
+  assertEquals(24, ModeMatrixPolicy.compatRate(ranges, 33_333_334L, 41_666_667L));
+  assertEquals(0, ModeMatrixPolicy.compatRate(ranges, 50_000_000L, 0));
  }
  @Test public void compatAeRangeFindsContainingRange() {
   assertArrayEquals(new int[] {15, 30}, ModeMatrixPolicy.compatAeRange(new int[][] {{15, 30}}, 30));

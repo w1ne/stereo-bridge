@@ -864,13 +864,15 @@ public final class OfflineRecorderService extends Service {
     return null;
   }
 
-  private VideoMode compatCandidate(List<Size> recordSizes, List<Size> previewSizes, int[][] ranges) {
+  private VideoMode compatCandidate(StreamConfigurationMap map, List<Size> recordSizes, List<Size> previewSizes, int[][] ranges) {
     List<Size> sorted = new ArrayList<>(recordSizes);
     sorted.sort((a, b) -> Long.compare((long) b.getWidth() * b.getHeight(), (long) a.getWidth() * a.getHeight()));
     for (Size candidate : sorted) {
       if (!ModeMatrixPolicy.compatSize(candidate.getWidth(), candidate.getHeight())) continue;
       if (!previewSizes.contains(candidate)) continue;
-      int rate = ModeMatrixPolicy.compatRate(ranges);
+      int rate = ModeMatrixPolicy.compatRate(ranges,
+          map.getOutputMinFrameDuration(MediaCodec.class, candidate),
+          map.getOutputMinFrameDuration(SurfaceTexture.class, candidate));
       if (rate == 0) continue;
       VideoMode compat = VideoMode.of(candidate.getWidth(), candidate.getHeight(), rate);
       if (firstSupportedCodec(compat) == null) continue;
@@ -923,11 +925,14 @@ public final class OfflineRecorderService extends Service {
         Size candidateSize = new Size(candidate.width, candidate.height);
         if (!recordList.contains(candidateSize) || !previewList.contains(candidateSize)) continue;
         if (!ModeMatrixPolicy.fpsRangeCovers(ranges, candidate.rate)) continue;
+        if (!VideoCapabilityPolicy.supportsCaptureRate(candidate.rate,
+            map.getOutputMinFrameDuration(MediaCodec.class, candidateSize),
+            map.getOutputMinFrameDuration(SurfaceTexture.class, candidateSize))) continue;
         if (firstSupportedCodec(candidate) == null) continue;
         feasible.add(candidate);
       }
       if (feasible.isEmpty()) {
-        VideoMode compat = compatCandidate(recordList, previewList, ranges);
+        VideoMode compat = compatCandidate(map, recordList, previewList, ranges);
         if (compat != null) feasible.add(compat);
       }
       if (feasible.isEmpty()) continue;

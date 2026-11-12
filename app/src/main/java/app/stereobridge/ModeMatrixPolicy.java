@@ -48,11 +48,13 @@ final class ModeMatrixPolicy {
     return width > 0 && height > 0 && Math.max(width, height) <= 1920 && Math.min(width, height) <= 1080;
   }
 
-  /** Legacy fallback rate: 30 when any advertised range contains it, else 24, else 0. */
-  static int compatRate(int[][] ranges) {
+  /** Legacy fallback rate: 30 or 24 when both the AE range and output durations permit it. */
+  static int compatRate(int[][] ranges, long videoDuration, long previewDuration) {
     if (ranges == null) return 0;
-    if (contains(ranges, 30)) return 30;
-    if (contains(ranges, 24)) return 24;
+    if (contains(ranges, 30)
+        && VideoCapabilityPolicy.supportsCaptureRate(30, videoDuration, previewDuration)) return 30;
+    if (contains(ranges, 24)
+        && VideoCapabilityPolicy.supportsCaptureRate(24, videoDuration, previewDuration)) return 24;
     return 0;
   }
 

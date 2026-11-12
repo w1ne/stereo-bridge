@@ -5,6 +5,13 @@ final class VideoCapabilityPolicy {
    int selected = Math.min(requested,(int)Math.floor(upper));
    return selected >= 1 && selected >= lower ? selected : 0;
  }
+ // Both camera outputs must sustain the requested rate. Zero means unavailable metadata
+ // on legacy devices. Allow the one-nanosecond rounding of a nominal frame interval.
+ static boolean supportsCaptureRate(int requested,long videoDuration,long previewDuration) {
+  if (requested < 1 || videoDuration < 0 || previewDuration < 0) return false;
+  long duration = Math.max(videoDuration,previewDuration);
+  return duration == 0 || duration <= (1_000_000_000L + requested - 1) / requested;
+ }
  // Presets calibrated against a real Pixel Camera 4K30 HDR file (~43 Mbps).
  static int bitrate(int width,int height,int rate,int lower,int upper) {
   long desired;
