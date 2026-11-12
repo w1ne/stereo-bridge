@@ -15,7 +15,7 @@ for path in files:
         'ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)]))
     video = next(s for s in metadata['streams'] if s['codec_type'] == 'video')
     audio = next(s for s in metadata['streams'] if s['codec_type'] == 'audio')
-    assert video['codec_name'] == 'h264'
+    assert video['codec_name'] in ('h264', 'hevc'), f'{path}: unexpected codec {video["codec_name"]}'
     assert audio['codec_name'] == 'aac' and audio['channels'] == 2
     assert int(audio['sample_rate']) == 48000
     assert float(audio['duration']) >= 3 and float(video['duration']) >= 3
@@ -42,15 +42,31 @@ for path in files:
             rms = math.sqrt(sum(x*x for x in window)/len(window))
             assert rms > 500, f'{path}: silent 100 ms interval on channel {side}'
     packets = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_packets',
-        '-show_entries', 'packet=stream_index,pts_time', '-of', 'json', str(path)]))['packets']
+        '-show_entries', 'packet=stream_index,pts_time,dts_time', '-of', 'json', str(path)]))['packets']
     for stream in (video, audio):
-        pts = [float(p['pts_time']) for p in packets
-               if p['stream_index'] == stream['index'] and 'pts_time' in p]
-        assert pts and all(b >= a for a, b in zip(pts, pts[1:])), 'Nonmonotonic track timestamps'
+        index = stream['index']
+        stream_packets = [p for p in packets if p['stream_index'] == index]
+        pts = [float(p['pts_time']) for p in stream_packets if 'pts_time' in p]
+        dts = [float(p['dts_time']) for p in stream_packets if 'dts_time' in p]
+        assert all(t >= -0.5 for t in pts + dts), f'{path}: grossly negative timestamp in stream {index}'
+        if stream_packets and all('dts_time' in p for p in stream_packets):
+            timeline = dts
+        elif stream_packets and all('pts_time' in p for p in stream_packets):
+            timeline = pts
+        else:
+            raise AssertionError(f'{path}: incomplete timestamps in stream {index}')
+        assert all(b >= a for a, b in zip(timeline, timeline[1:])), \
+            f'{path}: nonmonotonic timestamps in stream {index}'
     report = {'file': path.name, 'video': f"{video['width']}x{video['height']}",
               'duration': metadata['format']['duration'], 'sample_rate': 48000,
-              'channels': 2, 'tone_power_ratios': ratios}
+              'channels': 2, 'tone_power_ratios': ratios,
+              'codec': video['codec_name'],
+              'profile': video.get('profile'),
+              'pix_fmt': video.get('pix_fmt'),
+              'color_transfer': video.get('color_transfer'),
+              'hdr': video.get('color_transfer') == 'arib-std-b67',
+              'fps': video.get('avg_frame_rate')}
     reports.append(report)
     print(json.dumps(report), flush=True)
 (Path(sys.argv[1]).parent / 'media-verification.json').write_text(json.dumps(reports, indent=2))
-print('PASS: playable H.264/stereo AAC, distinct channel tones, monotonic timestamps, no silent 100 ms windows.')
+print('PASS: playable H.264/HEVC/stereo AAC, distinct channel tones, monotonic timestamps, no silent 100 ms windows.')

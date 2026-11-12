@@ -3,7 +3,6 @@ package app.stereobridge;
 public final class CameraGeometry {
  private CameraGeometry() {}
  public static int rotation(int sensor, int display, boolean front) { return Math.floorMod(sensor + (front ? display : -display),360); }
- public static boolean within1080(int width,int height) { return width>0 && height>0 && Math.max(width,height)<=1920 && Math.min(width,height)<=1080; }
  public static float[] previewCorners(int viewWidth,int viewHeight,int bufferWidth,int bufferHeight,int sensor,int display) {
    // TextureView's producer transform already applies sensor orientation and front mirroring.
    float sw = sensor % 180 == 0 ? bufferWidth : bufferHeight;
